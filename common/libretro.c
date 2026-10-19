@@ -857,6 +857,7 @@ static const float supported_framerates[] = {
    30.0f,
    40.0f,
    50.0f,
+   59.67f,	/* Miyoo Mini panel */
    60.0f,
    72.0f,
    75.0f,
@@ -2236,6 +2237,18 @@ static void audio_step(void)
       return;
    push_audio = (av_flags & RETRO_AV_ENABLE_AUDIO) != 0;
 
+   /* This frame's share of the samples.  At a fractional framerate
+    * (59.67) frames alternate between n and n + 1 so that the average
+    * is exact; at whole ones it is the same count every frame. */
+   if (shm)
+   {
+      static double audio_frame_acc;
+
+      audio_frame_acc += audio_samplerate;
+      shm->samples_per_frame = (int)(audio_frame_acc / framerate);
+      audio_frame_acc -= shm->samples_per_frame * (double)framerate;
+   }
+
    /* Mix.  S_Update does the spatialization /
     * volume falloff for the listener position; the
     * BGM and CD updaters feed raw streaming samples
@@ -2265,7 +2278,8 @@ static void audio_step(void)
     * advance only by what was actually consumed --
     * the unwritten tail will be retried in the next
     * loop iteration. */
-   audio_frames_remaining = audio_samplerate / framerate;
+   audio_frames_remaining = shm ? (unsigned)shm->samples_per_frame
+                                : (unsigned)(audio_samplerate / framerate);
 
    /* Float output path: push the engine's normalized-float buffer through the
     * negotiated float batch callback.  Identical chunking / partial-write

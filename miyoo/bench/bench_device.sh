@@ -52,6 +52,7 @@ if [ "$PORT" = 1 ]; then
 fi
 # PERF=1: r_perf logs core time per frame each second (wall minus core = RetroArch's share)
 # SYNC=1: audio_sync on as in play (paced by the sound, ~60 fps): compare "timedemo cpu"
+# VSYNC=1: video_vsync on; REFRESH=59.67: RetroArch's video_refresh_rate (Onion: 60)
 # CFG: extra console commands, ';'-separated (e.g. CFG="r_threads 0")
 # LOAD=s0: load that savegame (copies of the player's saves) instead of a timedemo; use max_frames
 if [ -n "$LOAD" ]; then
@@ -97,7 +98,8 @@ libretro_log_level = "0"
 log_verbosity = "true"
 log_to_file = "false"
 audio_sync = "$([ "${SYNC:-0}" = 1 ] && echo true || echo false)"
-video_vsync = "false"
+video_vsync = "$([ "${VSYNC:-0}" = 1 ] && echo true || echo false)"
+${REFRESH:+video_refresh_rate = "$REFRESH"}
 fps_show = "false"
 EOF
 

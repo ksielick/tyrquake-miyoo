@@ -122,6 +122,7 @@ struct retro_core_option_definition option_defs_us[] = {
          { "30",              "30fps"},
          { "40",              "40fps"},
          { "50",              "50fps"},
+         { "59.67",           "59.67fps (Miyoo Mini screen)"},
          { "60",              "60fps"},
          { "72",              "72fps"},
          { "75",              "75fps"},

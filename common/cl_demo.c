@@ -369,6 +369,15 @@ static void CL_FinishTimeDemo(void)
 	int n = td_wall_frames < TD_MAX_FRAMES ? td_wall_frames : TD_MAX_FRAMES;
 	double wall = (td_wall_last - td_wall_start) / 1000000.0;
 
+	if (n >= 360) {
+	    /* the pacing: frames 300-359 in order (bursts show here) */
+	    char line[60 * 4 + 1];
+	    int i, len = 0;
+	    for (i = 300; i < 360; i++)
+		len += snprintf(line + len, sizeof(line) - len, " %.0f",
+				td_frame_ms[i]);
+	    Con_Printf("timedemo frames 300-359 ms:%s\n", line);
+	}
 	qsort(td_frame_ms, n, sizeof(td_frame_ms[0]), CL_CompareFloat);
 	Con_Printf("timedemo wall: %i frames %.3f s %.2f fps, frame ms "
 		   "avg %.2f median %.2f p90 %.2f p99 %.2f max %.2f\n",
@@ -376,6 +385,18 @@ static void CL_FinishTimeDemo(void)
 		   wall * 1000.0 / td_wall_frames, td_frame_ms[n / 2],
 		   td_frame_ms[n * 9 / 10], td_frame_ms[n * 99 / 100],
 		   td_frame_ms[n - 1]);
+	{
+	    /* with vsync a frame over ~1.5 refreshes missed one */
+	    int i, over20 = 0, over25 = 0;
+	    for (i = 0; i < n; i++) {
+		if (td_frame_ms[i] > 20.0f)
+		    over20++;
+		if (td_frame_ms[i] > 25.0f)
+		    over25++;
+	    }
+	    Con_Printf("timedemo late: %i frames over 20 ms, %i over 25 ms\n",
+		       over20, over25);
+	}
 #ifdef TD_CPU
 	{
 	    double proc, main_thread;

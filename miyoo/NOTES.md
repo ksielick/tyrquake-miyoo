@@ -409,6 +409,24 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
 - r_perf at 60 fps: audio_batch_cb 2.1-4.4 ms per frame is now mostly waiting for the sound
   (the spare time); heaviest second: render 13.7, cb 2.1.
 
+## Native refresh 59.67 Hz (2026-10-19, owner asked)
+- Core: framerate option "59.67" (also what "auto" picks when RetroArch's video_refresh_rate is
+  59.67); the samples per frame come from an accumulator (804/805 alternating at 48 kHz, the
+  same count every frame at whole framerates).
+- bench: `VSYNC=1` (video_vsync), `REFRESH=59.67` (RetroArch's video_refresh_rate, Onion: 60).
+  The timedemo prints frames 300-359 in order and how many took over 20 / 25 ms.
+- demo1 640x480 frames 300-359 (ms):
+  - A, Onion's setup (audio_sync on, vsync off), 60 fps: `12 18 20 12 18 20 13 18 20 ...`:
+    the sound paces the game in bursts (RetroArch's OSS writes block per audio block), so the
+    frames reach the screen unevenly although the average is 16.9 ms.
+  - C, audio_sync + vsync, 59.67: the same bursts (`20 20 18 18 14 13 17 20 12 18 20 ...`).
+  - D, vsync on, audio_sync off, 59.67: `17 17 17 16 17 17 ...`, 59.67 fps exactly, avg/median
+    16.76, p90 17.22, 19 of 969 frames over 20 ms (heavy frames waiting for the next refresh).
+  - A/B/C all ~59.0-59.3 fps, ~100 frames over 20 ms, same CPU (main thread 12.4-12.9 ms).
+- So vsync works with sdl_dingux, but with audio_sync on the audio writes decide the pacing.
+  D needs listening: without audio_sync the sound is not waited for, so a drift between the
+  panel and the audio clocks would show as an occasional click (dropped/missing samples).
+
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +
