@@ -210,7 +210,8 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
   fc33ab4d = commit fc14e41, .port as content, `cores/core_info.cache` deleted, shortcut replaced by
   `miyoo/card/1996 Quake.port`, previous one in workspace `backup/20261019-gameswitcher/`; then
   by md5 1cec45bf = commit 3f56ebe: resume without console flash, palette on both threads, Q_rand,
-  dither fix; then by md5 a1637818 = commit 47f32a5: alias models on both threads, music thread,
+  dither fix; then by md5 a1637818 = commit 47f32a5 (later c3bc85e7 = ee6132b, Slow Frames real-time
+  steps): alias models on both threads, music thread,
   59.67 fps option, with a test setup: TyrQuake.opt framerate 40 → "59.67" and a new core override
   `config/TyrQuake/TyrQuake.cfg` (now audio_sync true, audio_resampler sinc, refresh 59.67; before: vsync
   + audio_latency 96, and first audio_sync
