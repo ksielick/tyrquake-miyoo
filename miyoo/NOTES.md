@@ -365,6 +365,17 @@ Like dethrace's miyoo-emu `--compare`, but on the device: a timedemo replays the
   21.10), demo2 13.08 (12.66, 15.80, 19.54), demo3 14.25 (14.19, 17.17, 20.62); before 15.23 /
   13.87 / 15.63. r_perf demo1: ents 1.5-2.0 (poly 1.1-1.5).
 
+## What RetroArch costs per frame (2026-10-19, owner asked: worth a standalone port?)
+r_perf demo1 640x480 (core 7bc25bc): audio 2.25 ms = music decoding (BGM_Update, OGG) ~1.0 +
+audio_batch_cb (RetroArch's resampler + driver) 0.6-0.75 + Quake's mixing ~0.5. video_cb
+(vidupd minus pal) ~1.0. Outside retro_run (RetroArch's loop, input, menu checks): ~0.1
+(wall time per second vs the sum of retro_run times). So RetroArch's own share is ~1.7 ms of
+~14; a standalone port would still need its own present (8 bpp → the 32 bpp upside-down fb0,
+could be folded into the palette pass on both threads) and audio push (audioserver FIFO, as in
+REDRIVER2): net gain maybe 1-1.5 ms (~10 %). It would lose the RetroArch menu, core options,
+remapping and the Game Switcher resume we have (Onion only screenshots/kills standalone ports;
+resume would need our own save on exit). Cheaper first: music decoding (~1 ms) on the worker.
+
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +
