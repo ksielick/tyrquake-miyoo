@@ -71,6 +71,30 @@ the level. Worth reporting upstream.
 - The first stock 320x240 timedemo check: hasn't been verified visually that the stock core really
   ran the timedemo (no log text from it); the per-frame numbers match ours, so it likely did.
 
+## Current performance (2026-10-19 evening, core 053a3d6c = d5cbb2b)
+640x480, 2 threads (surface caches on both), smooth animation/movement on, battery 43→40 % (not
+charging), 1200 MHz performance governor, audio on, audio_sync/vsync off. Budget: 16.76 ms
+(59.67 Hz panel).
+
+| demo | avg | median | p90 | p99 | max | fps (wall) |
+|---|---|---|---|---|---|---|
+| demo1 | 15.86 | 15.49 | 19.03 | 21.76 | 68.3 (1st frames) | 63.1 |
+| demo1 (PERF=1 run) | 15.78 | 15.40 | 18.99 | 22.81 | 36.3 | 63.4 |
+| demo2 | 14.53 | 13.98 | 17.66 | 21.93 | 27.7 | 68.8 |
+| demo3 | 16.27 | 16.17 | 19.55 | 22.53 | 29.6 | 61.5 |
+
+- Same as the earlier 2-thread runs (demo1 15.61-15.68, demo2 14.60-14.64, demo3 16.26-16.38): the
+  save-state/.port/start-up changes cost nothing per frame. Vs the stock core (one thread):
+  demo1 20.0 → 15.8, demo2 18.0 → 14.5, demo3 20.6 → 16.3 ms.
+- The averages are at or under the budget, but p90 is 17.7-19.6 ms: at least 10 % of the frames
+  miss it, in the heavy scenes (the audio crackle the owner hears there).
+- r_perf demo1, per second: frame 13.5-18.3 ms = render 11.4-16.4 + audio 1.9-2.4 (mixing + OGG
+  music). Render = 3D view 5.6-11.8 + "2d" 3.6-4.3 (HUD + VID_Update). SW sections: edge drawing
+  4.4-8.4 (D_DrawSurfaces 3.6-6.5, of which the parallel cache phase 0.04-1.3), entities (alias
+  models, one thread) 1.0-3.6, VID_Update (palette pass + video_cb) 2.7-3.4.
+- So the serial work is now about half the frame: VID_Update ~3.2 + entities ~2.8 + audio ~2.1
+  + edge lists/setup. These are the next targets (see Next).
+
 ## Origins and the standalone 0.71 (2026-10-19)
 - Onion's stock core = plain libretro buildbot armhf build of commit a44247c (2020-11-13), GCC 5.4
   (Ubuntu 16.04 Linaro) — no Onion/Miyoo patches. Master is 438 commits later, same speed on demo1.
@@ -221,5 +245,10 @@ Onion source: github.com/OnionUI/Onion `src/keymon/menuButtonAction.h`, `src/gam
   (`build/shots/state_resume_port.png`). The bench runs click because they set audio_sync off.
 
 ## Next
-- Profile where the 20 ms at 640x480 goes (r_perf sections: 3D view vs 2D/HUD vs palette/output vs
-  sound), then: second core (split the screen like dethrace/REDRIVER2), NEON for spans/palette pass.
+Done: profile (r_perf sections), second core for spans and surface caches. To bring p90 under
+16.76 ms (heaviest first, see "Current performance"):
+- VID_Update (~3.2 ms): the palette pass split across the two threads and/or NEON.
+- Alias models (~2.8 ms in heavy scenes): draw them in bands on both threads like the spans.
+- Audio (~2.1 ms): mixing + OGG decoding; check what the music costs alone.
+- Core framerate override 59.67 to match the panel (each frame then gets 16.76 ms of game time).
+- Later: entity alpha (0.71), fence textures (owner postponed).
