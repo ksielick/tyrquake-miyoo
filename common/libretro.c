@@ -2186,6 +2186,16 @@ void D_EndDirectRect(int x, int y, int w, int h)
  * not the async push model that
  * RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK provides).
  */
+/* audio_batch_cb, timed for r_perf (RetroArch's resampler and driver) */
+static size_t audio_batch_timed(const int16_t *data, size_t frames)
+{
+   size_t n;
+   perf_timing_section_begin(PERF_SECTION_AUDIO_CB);
+   n = audio_batch_cb(data, frames);
+   perf_timing_section_end(PERF_SECTION_AUDIO_CB);
+   return n;
+}
+
 static void audio_step(void)
 {
    unsigned audio_frames_remaining;
@@ -2229,7 +2239,9 @@ static void audio_step(void)
     * tail of S_Update writes exactly samples_per_
     * frame stereo frames into shm->buffer ==
     * audio_out_buffer. */
+   perf_timing_section_begin(PERF_SECTION_AUDIO_BGM);
    BGM_Update();
+   perf_timing_section_end(PERF_SECTION_AUDIO_BGM);
    if (cls.state == ca_active)
       S_Update(r_origin, vpn, vright, vup);
    else
@@ -2286,7 +2298,7 @@ static void audio_step(void)
             (audio_frames_remaining > audio_batch_frames_max) ?
                   audio_batch_frames_max : audio_frames_remaining;
       unsigned audio_frames_written  =
-            audio_batch_cb(audio_out_ptr, audio_frames_to_write);
+            audio_batch_timed(audio_out_ptr, audio_frames_to_write);
 
       if (audio_frames_written == 0)
          break;	/* frontend can't accept any more this frame */

@@ -75,6 +75,8 @@ enum {
    PERF_SECTION_SW_VIDUPD,        /* VID_Update: palette pass + video_cb */
    PERF_SECTION_SW_PAL,           /* VID_Update sub: the palette pass alone */
    PERF_SECTION_SW_POLY,          /* SW_ENTS sub: alias model triangles (D_PolysetDraw) */
+   PERF_SECTION_AUDIO_BGM,        /* AUDIO sub: BGM_Update (music decoding) */
+   PERF_SECTION_AUDIO_CB,         /* AUDIO sub: audio_batch_cb (the frontend) */
    PERF_SECTION_COUNT
 };
 
