@@ -52,6 +52,13 @@ static void CL_FinishTimeDemo(void);
 /* realtime advances a fixed 1/framerate per retro_run, so timedemo's own
  * numbers only count frames; these track the frontend's wall clock. */
 cvar_t timedemo_quit = { "timedemo_quit", "0" };
+/* timedemo_shots N: every Nth timedemo frame, VID_Update saves the frame the
+ * frontend gets as <timedemo_shotdir>/NNNNN.rgb565.  A timedemo replays the
+ * same frames, so the shots of two builds compare pixel for pixel
+ * (miyoo/tools/shots.sh).  Not for timing runs: saving costs time. */
+cvar_t timedemo_shots = { "timedemo_shots", "0" };
+cvar_t timedemo_shotdir = { "timedemo_shotdir", "/tmp/tqshots" };
+int td_shot_frame = -1;
 #define TD_MAX_FRAMES 16384
 static float td_frame_ms[TD_MAX_FRAMES];
 static int td_wall_frames;
@@ -73,6 +80,8 @@ static void CL_TimeDemoWallFrame(void)
       td_frame_ms[td_wall_frames] = (float)((now - td_wall_last) / 1000.0);
    td_wall_frames++;
    td_wall_last = now;
+   if (timedemo_shots.value >= 1 && td_wall_frames % (int)timedemo_shots.value == 0)
+      td_shot_frame = td_wall_frames;
 }
 
 static int CL_CompareFloat(const void *a, const void *b)

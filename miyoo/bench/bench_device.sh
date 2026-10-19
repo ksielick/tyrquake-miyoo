@@ -34,7 +34,7 @@ if [ -n "$SHOTS" ]; then rm -rf $SHOTDIR; mkdir -p $SHOTDIR; fi
 [ "$STATE" = save ] && rm -rf $TS
 mkdir -p $TS
 
-rm -rf $T
+rm -rf $T /tmp/tqshots      # tqshots: timedemo_shots (miyoo/tools/shots.sh)
 mkdir -p $T/game/tqbench $T/saves/tqbench $T/info
 ln -s "$G/id1" $T/game/id1
 # named as installed, with its .info beside it: RetroArch takes "savestate" from the .info

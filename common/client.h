@@ -339,6 +339,9 @@ int CL_GetMessage(void);
 void CL_TimeDemo_f(void);
 void CL_PlayDemo_f(void);
 extern cvar_t timedemo_quit;
+extern cvar_t timedemo_shots;
+extern cvar_t timedemo_shotdir;
+extern int td_shot_frame;	/* >= 0: VID_Update saves this frame */
 struct stree_root *CL_Demo_Arg_f(const char *arg);
 
 /**/

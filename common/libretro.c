@@ -2018,6 +2018,24 @@ void VID_Shutdown(void)
    surfcache  = NULL;
 }
 
+/* timedemo_shots (cl_demo.c): the RGB565 frame, width x height, rows packed */
+static void VID_SaveTimedemoShot(const uint16_t *frame, size_t pitch)
+{
+   char path[PATH_MAX_LENGTH];
+   FILE *f;
+   unsigned y;
+
+   path_mkdir(timedemo_shotdir.string);
+   snprintf(path, sizeof(path), "%s/%05d.rgb565", timedemo_shotdir.string, td_shot_frame);
+   td_shot_frame = -1;
+   f = fopen(path, "wb");
+   if (!f)
+      return;
+   for (y = 0; y < height; y++)
+      fwrite((const uint8_t *)frame + (size_t)y * pitch, sizeof(uint16_t), width, f);
+   fclose(f);
+}
+
 void VID_Update(vrect_t *rects)
 {
    unsigned x, y;
@@ -2080,6 +2098,9 @@ void VID_Update(vrect_t *rects)
       for (x = 0; x < width; ++x)
          out[x] = pal[in[x]];
    }
+
+   if (td_shot_frame >= 0)
+      VID_SaveTimedemoShot(dst, pitch);
 
    video_cb(dst, width, height, pitch);
    did_flip = true;

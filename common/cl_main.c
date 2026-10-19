@@ -902,6 +902,8 @@ void CL_Init(void)
    Cmd_SetCompletion("playdemo", CL_Demo_Arg_f);
    Cmd_AddCommand("timedemo", CL_TimeDemo_f);
    Cvar_RegisterVariable(&timedemo_quit);
+   Cvar_RegisterVariable(&timedemo_shots);
+   Cvar_RegisterVariable(&timedemo_shotdir);
    Cmd_SetCompletion("timedemo", CL_Demo_Arg_f);
 
    Cmd_AddCommand("mcache", Mod_Print);

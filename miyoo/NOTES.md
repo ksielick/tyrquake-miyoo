@@ -278,6 +278,20 @@ Onion source: github.com/OnionUI/Onion `src/keymon/menuButtonAction.h`, `src/gam
   GET_STATUS `quake_1,Bench Quake,crc32=46182fb0`, `Bench Quake.state.auto` saved and resumed
   (`build/shots/state_resume_port.png`). The bench runs click because they set audio_sync off.
 
+## Screenshot regression check (2026-10-19, owner asked before more optimisation)
+Like dethrace's miyoo-emu `--compare`, but on the device: a timedemo replays the same frames
+(fixed time step per retro_run), so a frame looks the same in every correct build.
+- cvar `timedemo_shots N`: every Nth timedemo frame, VID_Update writes the RGB565 frame it hands
+  to RetroArch to `timedemo_shotdir` (default /tmp/tqshots) as NNNNN.rgb565 (614400 bytes at
+  640x480). Not for timing runs.
+- `miyoo/tools/shots.sh <core> <set> [every] [demos]` runs the demos at 640x480 (CFG as for
+  bench.sh) and fetches the shots (tar over SMB) to `<workspace>/build/shots/td/<set>/<demo>/`.
+- `py -3 miyoo/tools/shots_compare.py <ref set dir> <new set dir>`: identical or not per shot;
+  for each difference the pixel count, bounding box, max channel difference and a picture
+  reference | new | changed pixels (magenta); contact sheet per demo; exit 1 on any difference.
+- Reference = r_threads 0 (the original one-thread renderer); every optimisation must give the
+  same pixels (the two-thread split must already).
+
 ## Next
 Done: profile (r_perf sections), second core for spans and surface caches. To bring p90 under
 16.76 ms (heaviest first, see "Current performance"):
