@@ -101,6 +101,18 @@ charging), 1200 MHz performance governor, audio on, audio_sync/vsync off. Budget
   same as after hours of use, so sleep/uptime don't skew the bench. /proc/loadavg was 1.4 before
   the first run and climbed with each run (2.8, 3.6): the ~5 seen earlier was our own back-to-back
   runs (two busy threads each), not Onion.
+- Stock Onion core vs ours, same method for both (it can't quit or time a timedemo): RetroArch
+  --max-frames 300 and 900, ms/frame = run-time difference / 600 (start-up cancels out).
+  On the charger, after the reboot, alternated (raw lines in workspace
+  `build/bench_stock_vs_ours.txt`):
+
+  | demo | stock v0.62 | ours 053a3d6c | faster by |
+  |---|---|---|---|
+  | demo1 | 19.85 ms (50.4 fps) | 15.52 ms (64.4 fps) | 22 % (1.28x) |
+  | demo2 | 17.23 ms (58.0 fps) | 14.43 ms (69.3 fps) | 16 % (1.19x) |
+  | demo3 | 20.88 ms (47.9 fps) | 16.05 ms (62.3 fps) | 23 % (1.30x) |
+
+  Frames 300-900 only, so these differ a little from the whole-demo timedemo-wall averages.
 - So the serial work is now about half the frame: VID_Update ~3.2 + entities ~2.8 + audio ~2.1
   + edge lists/setup. These are the next targets (see Next).
 
