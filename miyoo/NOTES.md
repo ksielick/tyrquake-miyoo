@@ -193,7 +193,9 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
   string; then by md5 43f87cab = commit 1e7f291, savegame fix + lerp on by default; then by md5
   4e3da96e = commit 00c76b0, save states, with the .info saying savestate = "true"; then by md5
   fc33ab4d = commit fc14e41, .port as content, `cores/core_info.cache` deleted, shortcut replaced by
-  `miyoo/card/1996 Quake.port`, previous one in workspace `backup/20261019-gameswitcher/`) and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
+  `miyoo/card/1996 Quake.port`, previous one in workspace `backup/20261019-gameswitcher/`; then
+  by md5 1cec45bf = commit 3f56ebe: resume without console flash, palette on both threads, Q_rand,
+  dither fix; the shortcut on the card is still the one without the core_info.cache refresh) and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
   `tyrquake_libretro.so` is untouched.
 - `Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port`: `Core="tyrquake_miyoo"`
   (was `tyrquake`; original in the workspace `backup/20261019-before-install/`). Revert = that line.
@@ -324,6 +326,9 @@ Like dethrace's miyoo-emu `--compare`, but on the device: a timedemo replays the
 - r_perf demo1: vidupd 1.7-2.2 ms (was 2.7-3.4), of which the palette pass 1.0-1.25 on both
   threads; video_cb ~0.9.
 - Shots identical to the one-thread original (see above).
+- Final core 1cec45bf (with Q_rand + the dither fix), on battery, alone: demo1 avg 15.23 (median
+  14.82, p90 18.78, p99 22.18), demo2 13.87 (13.26, 17.27, 21.88), demo3 15.63 (15.62, 18.89,
+  22.34); ~2 % above the 5ed39274 run (noise, or the now correct dithering per surface).
 
 ## Next
 Done: profile (r_perf sections), second core for spans and surface caches. To bring p90 under
