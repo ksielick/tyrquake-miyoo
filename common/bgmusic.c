@@ -1,3 +1,4 @@
+#define _GNU_SOURCE /* SCHED_IDLE, cpu_set_t */
 /*
  * Background music handling for Quakespasm (adapted from uHexen2)
  * Handles streaming music as raw sound samples and runs the midi driver
@@ -31,6 +32,7 @@
 
 #include "snd_codec.h"
 #include "bgmusic.h"
+#include "sys.h"
 
 #define MUSIC_DIRNAME	"music"
 
@@ -80,6 +82,167 @@ static music_handler_t *music_handlers = NULL;
 #define CDRIPTYPE(x)	(((x) & CDRIP_TYPES) != 0)
 
 static snd_stream_t *bgmstream = NULL;
+
+/*
+ * Music decoding on its own thread (unix).  Tremor costs ~1 ms per frame
+ * on the Miyoo, all of it on the frame's critical path; a decoder thread at
+ * idle priority on the second core (idle between the drawing flushes) keeps
+ * a few seconds of decoded PCM in a ring, and BGM_UpdateStream only copies
+ * from it.  bgmstream is opened and closed on the main thread; the decoder
+ * reads it only while it is dec_stream (changed under dec_lock, which the
+ * decoder holds while it reads).  Without the thread the stream is decoded
+ * in BGM_UpdateStream as before.
+ */
+#if defined(__unix__) && !defined(__EMSCRIPTEN__)
+#define BGM_THREAD 1
+#include <pthread.h>
+#include <sched.h>
+
+#define BGM_RING_BYTES	(512 * 1024)	/* power of two; ~2.7 s at 48 kHz */
+#define BGM_DEC_CHUNK	16384
+
+static byte bgm_ring[BGM_RING_BYTES];
+static volatile unsigned ring_in, ring_out;	/* bytes written / read */
+static volatile int dec_end;	/* 0, 1 = end of a non-looping stream, <0 = error */
+static snd_stream_t *volatile dec_stream;
+static pthread_t dec_thread;
+static pthread_mutex_t dec_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t dec_cond = PTHREAD_COND_INITIALIZER;
+static qboolean dec_running, dec_failed, dec_busy;
+static unsigned dec_behind;	/* frames the ring ran dry (reported at shutdown) */
+static volatile qboolean dec_quit;
+
+static void *BGM_DecoderMain (void *arg)
+{
+	byte chunk[BGM_DEC_CHUNK];
+	qboolean just_rewound = false;
+	(void)arg;
+
+#ifdef __linux__
+	{
+		/* run only when a core is idle, on the drawing worker's core */
+		struct sched_param sp;
+		cpu_set_t set;
+		memset(&sp, 0, sizeof(sp));
+		sched_setscheduler(0, SCHED_IDLE, &sp);
+		CPU_ZERO(&set);
+		CPU_SET(1, &set);
+		sched_setaffinity(0, sizeof(set), &set);
+	}
+#endif
+
+	pthread_mutex_lock(&dec_lock);
+	for (;;)
+	{
+		snd_stream_t *s;
+		int frame, room, res;
+
+		while (!dec_quit && (!dec_stream || dec_end ||
+		       BGM_RING_BYTES - (ring_in - ring_out) < BGM_DEC_CHUNK))
+		{
+			just_rewound = false;
+			pthread_cond_wait(&dec_cond, &dec_lock);
+		}
+		if (dec_quit)
+			break;
+
+		/* decode without the lock (this thread may wait long for a
+		 * core); BGM_DetachDecoder waits for dec_busy to clear */
+		s = dec_stream;
+		dec_busy = true;
+		pthread_mutex_unlock(&dec_lock);
+		frame = s->info.width * s->info.channels;
+		room = BGM_DEC_CHUNK - BGM_DEC_CHUNK % frame;
+		res = S_CodecReadStream(s, room, chunk);
+		if (res == 0 && bgmloop && !just_rewound)
+		{
+			res = S_CodecRewindStream(s);
+			if (res == 0)
+			{
+				just_rewound = true;
+				res = S_CodecReadStream(s, room, chunk);
+				if (res == 0)
+					res = -1000;	/* decodes to nothing */
+			}
+			else if (res > 0)
+				res = -res;
+		}
+		pthread_mutex_lock(&dec_lock);
+		dec_busy = false;
+		pthread_cond_broadcast(&dec_cond);
+		if (dec_stream != s)
+			continue;	/* detached meanwhile: drop it */
+
+		if (res > 0)
+		{
+			unsigned pos = ring_in & (BGM_RING_BYTES - 1);
+			int first = BGM_RING_BYTES - pos;
+
+			res -= res % frame;
+			if (first > res)
+				first = res;
+			memcpy(bgm_ring + pos, chunk, first);
+			memcpy(bgm_ring, chunk + first, res - first);
+			__sync_synchronize();
+			ring_in += res;
+			just_rewound = false;
+		}
+		else if (res == 0)	/* EOF, not looping */
+			dec_end = 1;
+		else
+			dec_end = res;
+	}
+	pthread_mutex_unlock(&dec_lock);
+	return NULL;
+}
+
+static qboolean BGM_StartDecoder (void)
+{
+	if (dec_running)
+		return true;
+	if (dec_failed)
+		return false;
+	dec_quit = false;
+	if (pthread_create(&dec_thread, NULL, BGM_DecoderMain, NULL) != 0)
+	{
+		Con_Printf("Music: no decoder thread, decoding in the frame\n");
+		dec_failed = true;
+		return false;
+	}
+	dec_running = true;
+	return true;
+}
+
+/* the decoder lets go of the stream (it may be closed after this) */
+static void BGM_DetachDecoder (void)
+{
+	if (!dec_running)
+		return;
+	pthread_mutex_lock(&dec_lock);
+	dec_stream = NULL;
+	while (dec_busy)
+		pthread_cond_wait(&dec_cond, &dec_lock);
+	pthread_mutex_unlock(&dec_lock);
+}
+
+void BGM_StopThread (void)
+{
+	if (!dec_running)
+		return;
+	pthread_mutex_lock(&dec_lock);
+	dec_stream = NULL;
+	dec_quit = true;
+	pthread_cond_broadcast(&dec_cond);
+	pthread_mutex_unlock(&dec_lock);
+	pthread_join(dec_thread, NULL);
+	Sys_Printf("Music decoder: ring ran dry in %u frames\n", dec_behind);
+	dec_running = false;
+}
+#else
+void BGM_StopThread (void)
+{
+}
+#endif
 
 static void BGM_Play_f (void)
 {
@@ -182,6 +345,7 @@ qboolean BGM_Init (void)
 void BGM_Shutdown (void)
 {
 	BGM_Stop();
+	BGM_StopThread();
 /* sever our connections to
  * midi_drv and snd_codec */
 	music_handlers = NULL;
@@ -346,6 +510,9 @@ void BGM_Stop (void)
 {
 	if (bgmstream)
 	{
+#ifdef BGM_THREAD
+		BGM_DetachDecoder();
+#endif
 		bgmstream->status = STREAM_NONE;
 		S_CodecCloseStream(bgmstream);
 		bgmstream = NULL;
@@ -406,6 +573,74 @@ static void BGM_UpdateStream (void)
 	/* don't bother playing anything if musicvolume is 0 */
 	if (bgmvolume.value <= 0)
 		return;
+
+#ifdef BGM_THREAD
+	if (BGM_StartDecoder())
+	{
+		int frame = bgmstream->info.width * bgmstream->info.channels;
+
+		if (dec_stream != bgmstream)
+		{
+			/* a new stream: the decoder starts on it */
+			pthread_mutex_lock(&dec_lock);
+			ring_in = ring_out = 0;
+			dec_end = 0;
+			dec_stream = bgmstream;
+			pthread_mutex_unlock(&dec_lock);
+		}
+
+		while (s_rawavail < MAX_RAW_SAMPLES)
+		{
+			unsigned pos, avail = ring_in - ring_out;
+			int first;
+
+			bufferSamples = MAX_RAW_SAMPLES - s_rawavail;
+			fileSamples = bufferSamples * bgmstream->info.rate / shm->speed;
+			if (!fileSamples)
+				break;
+			fileBytes = fileSamples * frame;
+			if (fileBytes > (int) sizeof(raw))
+				fileBytes = (int) sizeof(raw) - (int) sizeof(raw) % frame;
+			if ((unsigned) fileBytes > avail)
+				fileBytes = avail - avail % frame;
+			if (!fileBytes)
+			{
+				if (dec_end > 0)	/* played to the end */
+				{
+					BGM_Stop();
+					return;
+				}
+				if (dec_end < 0)
+				{
+					Con_Printf("Stream read error (%i), stopping.\n", dec_end);
+					BGM_Stop();
+					return;
+				}
+				dec_behind++;
+				break;		/* the decoder is behind */
+			}
+			__sync_synchronize();
+			pos = ring_out & (BGM_RING_BYTES - 1);
+			first = BGM_RING_BYTES - pos;
+			if (first > fileBytes)
+				first = fileBytes;
+			memcpy(raw, bgm_ring + pos, first);
+			memcpy(raw + first, bgm_ring, fileBytes - first);
+			__sync_synchronize();
+			ring_out += fileBytes;
+			S_RawSamples(fileBytes / frame, bgmstream->info.rate,
+					bgmstream->info.width,
+					bgmstream->info.channels,
+					raw, bgmvolume.value);
+		}
+
+		/* room for more: wake the decoder */
+		pthread_mutex_lock(&dec_lock);
+		pthread_cond_signal(&dec_cond);
+		pthread_mutex_unlock(&dec_lock);
+		return;
+	}
+#endif
 
 	/* see how many samples should be copied into the raw buffer */
 	while (s_rawavail < MAX_RAW_SAMPLES)

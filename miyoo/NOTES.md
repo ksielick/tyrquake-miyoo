@@ -376,11 +376,29 @@ REDRIVER2): net gain maybe 1-1.5 ms (~10 %). It would lose the RetroArch menu, c
 remapping and the Game Switcher resume we have (Onion only screenshots/kills standalone ports;
 resume would need our own save on exit). Cheaper first: music decoding (~1 ms) on the worker.
 
+## Music decoding on its own thread (2026-10-19, core ac3f4af2)
+- The core decodes the music itself (id1/music/trackNN.ogg, Tremor: the frontend negotiates
+  int16 at 48000 Hz, logged as "Audio: 48000 Hz, int16 output"); RetroArch only gets the mixed
+  PCM (audio_driver oss → audioserver, resampler nearest).
+- bgmusic.c: a decoder thread (SCHED_IDLE, pinned to core 1) keeps a 512 KB ring of decoded PCM
+  filled in 16 KB chunks, decoding outside its lock (an idle-priority thread holding a lock the
+  main thread needs would stall it); BGM_UpdateStream only copies from the ring. Streams are
+  opened/closed on the main thread; BGM_Stop detaches the decoder first (waits for a chunk in
+  progress). Looping/EOF/errors handled by the decoder, reported to the main thread.
+  BGM_StopThread in retro_deinit (and BGM_Shutdown). "Music decoder: ring ran dry in N frames"
+  at exit: 1-2 (the first frames of a track).
+- r_perf: bgm 1.0 → 0.15 ms. But audio_batch_cb rose 0.65 → 1.1 ms in the bench: the timedemo
+  runs faster than real time with audio_sync off, so RetroArch's OSS buffer overflows and faster
+  frames make that worse; in play (60 fps, audio_sync) this doesn't happen. An unpinned decoder
+  measured the same.
+- A/B alternated, 640x480 avg: demo1 13.79/13.75 → 13.38/13.56, demo3 14.32/14.36 → 14.01/14.05
+  (p90 about -0.3).
+
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +
 shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/3), p90
 15.8-17.2: to bring p90 under 16.76 ms (heaviest first):
-- Audio (~2.1 ms): mixing + OGG decoding; check what the music costs alone.
+- Audio: music decoding done (own thread); left: mixing ~0.5 ms, RetroArch callback ~0.65.
 - Core framerate override 59.67 to match the panel (each frame then gets 16.76 ms of game time).
 - Later: entity alpha (0.71), fence textures (owner postponed).

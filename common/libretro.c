@@ -481,6 +481,7 @@ void retro_deinit(void)
 {
    /* the drawing thread must be gone before the core is unloaded */
    D_MT_Shutdown();
+   BGM_StopThread();
 
    if (!shutdown_core)
    {
@@ -1670,6 +1671,9 @@ bool retro_load_game(const struct retro_game_info *info)
       }
    }
    s_float_output = use_float_output;
+   if (log_cb)
+      log_cb(RETRO_LOG_INFO, "Audio: %d Hz, %s output\n", audio_samplerate,
+            use_float_output ? "float" : "int16");
 
    /* a state reloads the map and leaves out client-side effects: no
     * run-ahead, rewind or netplay on top of it */

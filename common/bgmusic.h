@@ -38,6 +38,8 @@ void BGM_Pause (void);
 void BGM_Resume (void);
 
 void BGM_PlayCDtrack (byte track, qboolean looping);
+/* the music decoder thread must be gone before the core is unloaded */
+void BGM_StopThread (void);
 
 #endif	/* _BGMUSIC_H_ */
 

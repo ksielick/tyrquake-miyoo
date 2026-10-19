@@ -160,7 +160,7 @@ cat $T/result.txt 2>/dev/null || {
 		"retroarch=$(pidof retroarch) cmd_to_run=$(ls /tmp/cmd_to_run.sh /mnt/SDCARD/.tmp_update/cmd_to_run.sh 2>/dev/null)"
 	tail -5 $T/log.txt 2>/dev/null
 }
-grep -E "PERF|SW:|music|timedemo|Loading|load|couldn|Couldn|ERROR|frames .* seconds|Sys_Error|ERROR|Segmentation|hunk|exec config|[Ss]tate|[Ss]erializ" $T/log.txt
+grep -E "PERF|SW:|music|timedemo|Loading|load|couldn|Couldn|ERROR|frames .* seconds|Sys_Error|ERROR|Segmentation|hunk|exec config|[Ss]tate|[Ss]erializ|Audio:|Music" $T/log.txt
 [ -n "$STATE" ] && { echo "states: $(ls -l $TS | tail -n +2)"; cat $T/udp.txt; }
 echo "MainUI back: $(pidof MainUI >/dev/null && echo yes || echo no)"
 echo "battery $(/customer/app/axp_test)"
