@@ -32,6 +32,7 @@ typedef struct {
    float sdivzorigin, tdivzorigin, ziorigin;
    fixed16_t sadjust, tadjust, bbextents, bbextentt;
    pixel_t *cacheblock;
+   float cache_mipscale;
    int cachewidth, turb_texheight;
    int turb_alpha, turb_blendmode, turb_ztest;
 } d_drawcmd_t;
@@ -95,6 +96,7 @@ static void replay(int v0, int v1)
       bbextentt = c->bbextentt;
       cacheblock = c->cacheblock;
       cachewidth = c->cachewidth;
+      d_cache_mipscale = c->cache_mipscale;
       r_turb_texheight = c->turb_texheight;
       r_turb_alpha = c->turb_alpha;
       r_turb_blendmode = c->turb_blendmode;
@@ -257,6 +259,7 @@ void D_MT_Record(int op, espan_t *spans, int color)
    c->bbextentt = bbextentt;
    c->cacheblock = cacheblock;
    c->cachewidth = cachewidth;
+   c->cache_mipscale = d_cache_mipscale;
    c->turb_texheight = r_turb_texheight;
    c->turb_alpha = r_turb_alpha;
    c->turb_blendmode = r_turb_blendmode;

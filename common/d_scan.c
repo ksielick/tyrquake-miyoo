@@ -780,7 +780,7 @@ void D_DrawSpans16QbDither (espan_t *pspan) /* qbism up it from 8 to 16. This + 
    float sdivzstepu, tdivzstepu, zistepu;
 
    /* mipmaps shouldn't be dithered */
-   if (pcurrentcache->mipscale < 1.0f)
+   if (d_cache_mipscale < 1.0f)
    {
       D_DrawSpans16Qb(pspan);
       return;

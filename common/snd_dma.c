@@ -411,7 +411,13 @@ S_StartSound(int entnum, int entchannel, sfx_t *sfx, vec3_t origin,
 	if (check == target_chan)
 	    continue;
 	if (check->sfx == sfx && !check->pos) {
-	    skip = rand() % (int)(0.1 * shm->speed);
+	    /* own sequence, not rand(): whether this runs depends on how far
+	     * the frontend has taken the mixed sound (wall-clock timing), and
+	     * a rand() here shifts the game's random numbers (particles,
+	     * dynamic lights) differently in every run of a timedemo */
+	    static unsigned snd_seed = 1;
+	    snd_seed = snd_seed * 1103515245u + 12345u;
+	    skip = (int)((snd_seed >> 16) % (unsigned)(0.1 * shm->speed));
 	    if (skip >= target_chan->remaining_samples)
 		skip = target_chan->remaining_samples - 1;
 	    target_chan->pos += skip;

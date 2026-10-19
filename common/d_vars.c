@@ -43,6 +43,7 @@ D_TLS fixed16_t sadjust, tadjust, bbextents, bbextentt;
 
 D_TLS pixel_t *cacheblock;
 D_TLS int cachewidth;
+D_TLS float d_cache_mipscale = 1.0f;
 pixel_t *d_viewbuffer;
 short *d_pzbuffer;
 unsigned int d_zrowbytes;

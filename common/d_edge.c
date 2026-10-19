@@ -535,6 +535,7 @@ void D_DrawSurfaces(void)
 
          cacheblock = (pixel_t *)pcurrentcache->data;
          cachewidth = pcurrentcache->width;
+         d_cache_mipscale = pcurrentcache->mipscale;
 
          D_CalcGradients(pface);
          D_EMIT(D_OP_SPANS, s->spans, 0);

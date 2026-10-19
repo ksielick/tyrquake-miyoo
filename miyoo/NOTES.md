@@ -292,12 +292,38 @@ Like dethrace's miyoo-emu `--compare`, but on the device: a timedemo replays the
 - Reference = r_threads 0 (the original one-thread renderer); every optimisation must give the
   same pixels (the two-thread split must already).
 
-## Palette pass on both threads (2026-10-19, built 5ed39274, not yet tested on the device)
+### What the first comparisons found (2026-10-19)
+- A run overlapping another Claude session on the device (portmanager-miyoo) gave a half-drawn
+  screen and wrong timings: check ListAgents before device runs.
+- shots.sh stopped after one demo: mssh returns its output filter's exit code (1 when the remote
+  command prints nothing) → `|| true` and a check for the tar file.
+- The timedemo was not repeatable: two runs of the same core differed in particles and dynamic
+  light radii (`200 + (rand() & 31)`). Causes: (1) the C library's rand() state is shared with
+  RetroArch in the same process; (2) S_StartSound took a rand() only when the same sound had just
+  started on another channel and that one's `pos` was still 0, which depends on how much audio the
+  frontend took (wall clock). Fixes: quakedef.h `#define rand() Q_rand()` (common.c, 64-bit LCG,
+  31-bit results, the game's own state; libc rand no longer imported), and snd_dma.c's offset uses
+  its own LCG. Then two runs gave 19/19 identical frames. (`nosound 1` alone was not enough.)
+- Real two-thread bug (since the span split): D_DrawSpans16QbDither skips dithering for mipmaps by
+  reading `pcurrentcache->mipscale` at draw time; replayed calls saw the last recorded surface, so
+  some walls got the wrong dithering. Now `d_cache_mipscale` (D_TLS) is set with cacheblock and
+  recorded/replayed with the call.
+- Result (Q_rand everywhere): reference = commit f95ef50 + the same RNG fixes (old palette loop,
+  r_threads 0, built in a git worktree at `<workspace>/build/wt/tyrquake` → `build/core_ref`) vs
+  core 1cec45bf with r_threads 0 and 1: demo1 19/19, demo2 19/19, demo3 21/21 identical.
+
+## Palette pass on both threads (2026-10-19; timed with 5ed39274, pixels checked with 1cec45bf)
 - VID_Update's 8 bpp → RGB565 pass: top half on the calling thread, bottom half on the worker
   (D_MT_RunBoth, a generic two-part job on d_mt's worker); 4 pixels per 32-bit load, two 32-bit
   stores; width/rowbytes in locals (the stores made gcc reload `width` every 4 pixels).
 - r_perf prints `vidupd X (pal Y)`: pal = the palette pass alone, the rest is video_cb
-  (RetroArch's work). To check: the timing, and identical shots (shots_compare vs r_threads 0).
+  (RetroArch's work).
+- 640x480, on battery, console alone: demo1 avg 14.86-14.88 (median 14.5, p90 18.1-18.3, p99
+  22.3-22.6), demo2 13.58-13.71 (12.9-13.2, 17.0-17.2, 21.1-21.8), demo3 15.38-15.44 (15.3,
+  18.8, 22.4-22.6). Before (15.8-15.9 / 14.5 / 16.3): about 1 ms per frame less.
+- r_perf demo1: vidupd 1.7-2.2 ms (was 2.7-3.4), of which the palette pass 1.0-1.25 on both
+  threads; video_cb ~0.9.
+- Shots identical to the one-thread original (see above).
 
 ## Next
 Done: profile (r_perf sections), second core for spans and surface caches. To bring p90 under

@@ -30,6 +30,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdlib.h>
 #include <setjmp.h>
 
+/* The game's random numbers come from its own generator (common.c), not
+ * the C library's rand(), whose state is shared with the frontend in the
+ * same process: RetroArch's own rand() calls made every run of a timedemo
+ * differ (particles, dynamic lights). Same 0..0x7fffffff range. */
+int Q_rand(void);
+#define rand() Q_rand()
+
 #include "cvar.h"
 #include "mathlib.h"
 

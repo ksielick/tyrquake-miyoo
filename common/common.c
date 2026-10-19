@@ -47,6 +47,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <streams/file_stream.h>
 
+/* the game's rand() (quakedef.h): a 64-bit LCG of its own, 31-bit results */
+static uint64_t q_rand_state = 1;
+
+int Q_rand(void)
+{
+   q_rand_state = q_rand_state * 6364136223846793005ULL + 1442695040888963407ULL;
+   return (int)(q_rand_state >> 33);
+}
+
 /* forward declarations */
 int64_t rfread(void* buffer,
    size_t elem_size, size_t elem_count, RFILE* stream);

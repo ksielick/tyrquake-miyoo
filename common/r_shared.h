@@ -56,6 +56,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 extern D_TLS int cachewidth;
 extern D_TLS int r_turb_texheight;	/* liquid texture height, see D_DrawTurbulent8Span */
 extern D_TLS pixel_t *cacheblock;
+/* mipscale of the surface cache being drawn (D_DrawSpans16QbDither doesn't
+ * dither mipmaps); part of the recorded state, not read from pcurrentcache,
+ * which is the last surface recorded by the time d_mt replays a call */
+extern D_TLS float d_cache_mipscale;
 extern int screenwidth;
 
 extern float pixelAspect;
