@@ -464,6 +464,17 @@ Done: profile (r_perf sections), second core for spans, surface caches, the pale
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +
 shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/3), p90
 15.8-17.2: to bring p90 under 16.76 ms (heaviest first):
-- Audio: music decoding done (own thread); left: mixing ~0.5 ms, RetroArch callback ~0.65.
-- Core framerate override 59.67 to match the panel (each frame then gets 16.76 ms of game time).
+- Done since: music decoding on its own thread, 59.67 fps option, Slow Frames real-time steps
+  (no clicks when a frame is late), bench SYNC/FPS/VSYNC/REFRESH/LAT/RC/RESAMPLER, CPU per frame.
+- Pacing: with audio_sync on the frames reach the screen in bursts (12/18/20 ms) whatever we do;
+  vsync without audio_sync is even (16.76) but drops samples. Not solved; would need a frontend
+  whose audio rate control works with Onion's OSS (or a standalone port).
+- Ideas, cheapest first (owner chose to start with 1, 2026-10-19):
+  1. Compiler: -O3 per file / for all, PGO (-fprofile-generate on the device with timedemos,
+     then -fprofile-use), maybe LTO. Usually 3-8 %, no code changes; shots must stay identical.
+  2. Quake's mixing (~0.5 ms) on the second core, overlapped with drawing.
+  3. The serial part of the world drawing (BSP walk, edge lists, R_ScanEdges' edge sorting,
+     ~1.5-2 ms): the biggest piece still on one core.
+  4. 32-pixel instead of 16-pixel perspective spans (fewer divides): not pixel-identical.
+  5. Overclocking (last).
 - Later: entity alpha (0.71), fence textures (owner postponed).
