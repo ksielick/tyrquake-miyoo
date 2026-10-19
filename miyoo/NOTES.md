@@ -95,8 +95,12 @@ charging), 1200 MHz performance governor, audio on, audio_sync/vsync off. Budget
 - Same runs on the charger (owner's curiosity; axp "charging":3, battery 40→43 %): demo1 avg 16.01
   (median 15.65, p90 19.34, p99 22.64), demo2 14.84 (14.32, 18.16, 22.13), demo3 16.44 (16.39,
   19.70, 23.59): 1-2 % slower than on battery, about the noise between runs. Charging doesn't
-  speed it up (the clock is fixed at 1200 MHz either way). /proc/loadavg was ~4.7-5.3 in both
-  sessions with no game running: Onion's idle tasks; not checked further.
+  speed it up (the clock is fixed at 1200 MHz either way).
+- Right after a reboot (owner asked; on battery, uptime <1 min): demo1 avg 15.93 (median 15.56,
+  p90 19.21, p99 22.24), demo2 14.53 (14.00, 17.69, 21.80), demo3 16.28 (16.29, 19.54, 21.95): the
+  same as after hours of use, so sleep/uptime don't skew the bench. /proc/loadavg was 1.4 before
+  the first run and climbed with each run (2.8, 3.6): the ~5 seen earlier was our own back-to-back
+  runs (two busy threads each), not Onion.
 - So the serial work is now about half the frame: VID_Update ~3.2 + entities ~2.8 + audio ~2.1
   + edge lists/setup. These are the next targets (see Next).
 
