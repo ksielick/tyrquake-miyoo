@@ -212,7 +212,8 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
   by md5 1cec45bf = commit 3f56ebe: resume without console flash, palette on both threads, Q_rand,
   dither fix; then by md5 a1637818 = commit 47f32a5: alias models on both threads, music thread,
   59.67 fps option, with a test setup: TyrQuake.opt framerate 40 → "59.67" and a new core override
-  `config/TyrQuake/TyrQuake.cfg` (video_vsync true, audio_sync true, audio_latency 96 (first audio_sync
+  `config/TyrQuake/TyrQuake.cfg` (now audio_sync true, audio_resampler sinc, refresh 59.67; before: vsync
+  + audio_latency 96, and first audio_sync
   false: clicks), video_refresh_rate 59.67;
   applies to the stock core too); the old TyrQuake.opt is in workspace `backup/20261019-hz/`, revert
   = restore it and delete TyrQuake.cfg; the shortcut on the card is still the one without the
@@ -431,11 +432,18 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   - A/B/C all ~59.0-59.3 fps, ~100 frames over 20 ms, same CPU (main thread 12.4-12.9 ms).
 - So vsync works with sdl_dingux, but with audio_sync on the audio writes decide the pacing.
 - D on the card: the owner heard clicks (without audio_sync RetroArch drops what doesn't fit).
-- Fix: audio_sync on + vsync + a longer audio buffer. With Onion's audio_latency 64 the OSS
-  writes block (audioserver frees space in big steps) and set the pace; with more room they
-  don't and vsync paces. bench `LAT=`: 96 → demo1/3 59.65/59.68 fps, median 16.75, p90
-  17.1-17.2, 13-15 frames over 20 ms, frames 300-359 all 16-17 ms; 128 the same. Card override
-  now: video_vsync true, audio_sync true, audio_latency 96, video_refresh_rate 59.67.
+- WRONG at first: "audio_sync + vsync + audio_latency 96 paces evenly" — those runs had the
+  card's core override (`config/TyrQuake/TyrQuake.cfg`, then audio_sync false) applied on top of
+  the bench config (RetroArch loads core overrides; the log said "[Override] ... unloaded"). The
+  bench now sets auto_overrides_enable/game_specific_options false. With the override changed
+  to audio_sync true the owner still heard faint clicks.
+- Clean (demo3, frames 300-1089 "steady" fps): audio paced at 60 fps, rate control off: 59.90
+  fps → audioserver takes ~47 920 samples/s (0.16 % under 48 kHz); vsync only: 59.60. With
+  audio_sync on every combination paces in bursts (vsync, audio_latency 64/96, sinc): steady
+  58.95-59.35 fps, 86-121 of 1090 frames over 20 ms — the same as Onion's setup.
+- Music ring dry only 1-2 frames per demo (track start): not the clicks.
+- Card test now: audio_sync true, audio_resampler sinc, video_refresh_rate 59.67, no vsync
+  (does nearest + rate control click?).
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and

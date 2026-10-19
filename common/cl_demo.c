@@ -378,6 +378,16 @@ static void CL_FinishTimeDemo(void)
 				td_frame_ms[i]);
 	    Con_Printf("timedemo frames 300-359 ms:%s\n", line);
 	}
+	if (n > 300) {
+	    /* the rate from frame 300 on, without the start-up (the steady
+	     * pace: the refresh with vsync, the sound with audio_sync) */
+	    double ms = 0.0;
+	    int i;
+	    for (i = 300; i < n; i++)
+		ms += td_frame_ms[i];
+	    Con_Printf("timedemo steady: frames 300-%i %.3f fps\n", n - 1,
+		       (n - 300) * 1000.0 / ms);
+	}
 	qsort(td_frame_ms, n, sizeof(td_frame_ms[0]), CL_CompareFloat);
 	Con_Printf("timedemo wall: %i frames %.3f s %.2f fps, frame ms "
 		   "avg %.2f median %.2f p90 %.2f p99 %.2f max %.2f\n",
