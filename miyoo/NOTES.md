@@ -212,7 +212,8 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
   by md5 1cec45bf = commit 3f56ebe: resume without console flash, palette on both threads, Q_rand,
   dither fix; then by md5 a1637818 = commit 47f32a5: alias models on both threads, music thread,
   59.67 fps option, with a test setup: TyrQuake.opt framerate 40 → "59.67" and a new core override
-  `config/TyrQuake/TyrQuake.cfg` (video_vsync true, audio_sync false, video_refresh_rate 59.67;
+  `config/TyrQuake/TyrQuake.cfg` (video_vsync true, audio_sync true, audio_latency 96 (first audio_sync
+  false: clicks), video_refresh_rate 59.67;
   applies to the stock core too); the old TyrQuake.opt is in workspace `backup/20261019-hz/`, revert
   = restore it and delete TyrQuake.cfg; the shortcut on the card is still the one without the
   core_info.cache refresh) and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
@@ -429,8 +430,12 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     16.76, p90 17.22, 19 of 969 frames over 20 ms (heavy frames waiting for the next refresh).
   - A/B/C all ~59.0-59.3 fps, ~100 frames over 20 ms, same CPU (main thread 12.4-12.9 ms).
 - So vsync works with sdl_dingux, but with audio_sync on the audio writes decide the pacing.
-  D needs listening: without audio_sync the sound is not waited for, so a drift between the
-  panel and the audio clocks would show as an occasional click (dropped/missing samples).
+- D on the card: the owner heard clicks (without audio_sync RetroArch drops what doesn't fit).
+- Fix: audio_sync on + vsync + a longer audio buffer. With Onion's audio_latency 64 the OSS
+  writes block (audioserver frees space in big steps) and set the pace; with more room they
+  don't and vsync paces. bench `LAT=`: 96 → demo1/3 59.65/59.68 fps, median 16.75, p90
+  17.1-17.2, 13-15 frames over 20 ms, frames 300-359 all 16-17 ms; 128 the same. Card override
+  now: video_vsync true, audio_sync true, audio_latency 96, video_refresh_rate 59.67.
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
