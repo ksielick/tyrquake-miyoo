@@ -162,11 +162,28 @@ config.cfg still wins (the owner's has both 1). Test with them on. 640x480, 2 th
 (console woken from sleep just before): demo1 avg 15.61 (p90 18.8, p99 21.4), demo2 14.60 (18.2,
 21.5), demo3 16.26 (19.4, 21.8) — same as with them off.
 
-## Idea: Onion GameSwitcher / RetroArch save states (owner, 2026-10-19)
-The core has no save states (retro_serialize_size 0), so the GameSwitcher can't resume Quake. Possible:
-serialize = the Quake savegame text written to memory (needs a fixed upper bound for
-retro_serialize_size), unserialize = Host_Loadgame_f from memory (map reload, ~1-2 s); only while a
-single-player server runs. Not started.
+## Save states for Onion's GameSwitcher (2026-10-19)
+How Onion does it (from keymon's strings): on Menu during RetroArch, keymon dumps the screen to
+`Saves/CurrentProfile/romScreens/<hash>.png` (FNV hash of the recent-list rom path; for the Quake
+shortcut 3601100754.png, which already worked), sends `SAVE_STATE_SLOT -1` and `QUIT` over
+RetroArch's network commands (`.tmp_update/bin/sendUDP` does the same) and touches
+`.runGameSwitcher`. Power-off does the same. Resuming starts RetroArch with savestate_auto_load, which
+reads `Saves/CurrentProfile/states/TyrQuake/pak0.state.auto` (sorted by library_name, named after the
+content file). Before this the core had no states, so Quake always started over.
+- `retro_serialize` = the "save" command's text (Host_WriteSavegame, through /tmp/tyrquake_state.sav)
+  behind a header: magic `TQSAVE01`, length, game dir name. Every game's content is `pak0.pak`, so
+  id1/hipnotic/rogue share one state file name: a state from another game dir is refused.
+- Same rules as "save": single player, not in intermission, not dead (else false: the old state stays).
+- retro_serialize_size: fixed 2 MB (more for >992 edicts); RetroArch drops states when it is 0, and
+  asks before the game runs. The zero tail compresses away (17 KB file).
+- `retro_unserialize` checks the header and leaves the load (Host_ReadSavegame, as "load": map reload)
+  to the next retro_run, after Cbuf_Execute: the auto state is loaded before quake.rc has run.
+- `.info`: `savestate = "true"`, `savestate_features = "basic"` (RetroArch reads support from the
+  .info), quirk INCOMPLETE (no run-ahead/rewind/netplay on top).
+- "[State] Failed to save state to RAM" at auto-load is RetroArch's undo-load backup taken before the
+  game runs: harmless.
+- Test (bench_device.sh STATE=save then STATE=load, LOAD=s1): state saved via sendUDP, resumed by
+  auto-load; screenshot `build/shots/state_resume.png` = s1 (health 100, 27 shells).
 
 ## Next
 - Profile where the 20 ms at 640x480 goes (r_perf sections: 3D view vs 2D/HUD vs palette/output vs

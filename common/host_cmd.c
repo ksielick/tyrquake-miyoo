@@ -491,70 +491,55 @@ static void Host_SavegameComment(char *text)
 
 /*
 ===============
-Host_Savegame_f
+Host_SavegameAllowed
+
+Also asked by retro_serialize (the frontend's save states).
 ===============
 */
-static void Host_Savegame_f(void)
+qboolean Host_SavegameAllowed(void)
 {
-   /* MAX_OSPATH (was 256). com_savedir alone is sized MAX_OSPATH,
-    * so a 256-byte buffer here truncates silently when the user has
-    * a long save path. Match Host_Loadgame_f. */
-   char name[MAX_OSPATH];
-   RFILE *f;
    int i;
-   char comment[SAVEGAME_COMMENT_LENGTH + 1];
-#ifdef _WIN32
-   char slash = '\\';
-#else
-   char slash = '/';
-#endif
-
-   if (cmd_source != src_command)
-      return;
 
    if (!sv.active) {
       Con_Printf("Not playing a local game.\n");
-      return;
+      return false;
    }
 
    if (cl.intermission) {
       Con_Printf("Can't save in intermission.\n");
-      return;
+      return false;
    }
 
    if (svs.maxclients != 1) {
       Con_Printf("Can't save multiplayer games.\n");
-      return;
-   }
-
-   if (Cmd_Argc() != 2) {
-      Con_Printf("save <savename> : save a game\n");
-      return;
-   }
-
-   if (strstr(Cmd_Argv(1), "..")) {
-      Con_Printf("Relative pathnames are not allowed.\n");
-      return;
+      return false;
    }
 
    for (i = 0; i < svs.maxclients; i++) {
       if (svs.clients[i].active && (svs.clients[i].edict->v.health <= 0)) {
          Con_Printf("Can't savegame with a dead player\n");
-         return;
+         return false;
       }
    }
 
-   if (COM_JoinPath(name, sizeof(name), com_savedir, slash, Cmd_Argv(1)) < 0) {
-      Con_Printf("ERROR: save name too long.\n");
-      return;
-   }
-   COM_DefaultExtension(name, sizeof(name), ".sav");
+   return true;
+}
 
-   Con_Printf("Saving game to %s...\n", name);
+/*
+===============
+Host_WriteSavegame
+===============
+*/
+qboolean Host_WriteSavegame(const char *name)
+{
+   RFILE *f;
+   int i;
+   char comment[SAVEGAME_COMMENT_LENGTH + 1];
+
    f = rfopen(name, "w");
    if (!f) {
       Con_Printf("ERROR: couldn't open.\n");
-      return;
+      return false;
    }
 
    rfprintf(f, "%i\n", SAVEGAME_VERSION);
@@ -582,7 +567,51 @@ static void Host_Savegame_f(void)
       rfflush(f);
    }
    rfclose(f);
-   Con_Printf("done.\n");
+   return true;
+}
+
+/*
+===============
+Host_Savegame_f
+===============
+*/
+static void Host_Savegame_f(void)
+{
+   /* MAX_OSPATH (was 256). com_savedir alone is sized MAX_OSPATH,
+    * so a 256-byte buffer here truncates silently when the user has
+    * a long save path. Match Host_Loadgame_f. */
+   char name[MAX_OSPATH];
+#ifdef _WIN32
+   char slash = '\\';
+#else
+   char slash = '/';
+#endif
+
+   if (cmd_source != src_command)
+      return;
+
+   if (!Host_SavegameAllowed())
+      return;
+
+   if (Cmd_Argc() != 2) {
+      Con_Printf("save <savename> : save a game\n");
+      return;
+   }
+
+   if (strstr(Cmd_Argv(1), "..")) {
+      Con_Printf("Relative pathnames are not allowed.\n");
+      return;
+   }
+
+   if (COM_JoinPath(name, sizeof(name), com_savedir, slash, Cmd_Argv(1)) < 0) {
+      Con_Printf("ERROR: save name too long.\n");
+      return;
+   }
+   COM_DefaultExtension(name, sizeof(name), ".sav");
+
+   Con_Printf("Saving game to %s...\n", name);
+   if (Host_WriteSavegame(name))
+      Con_Printf("done.\n");
 }
 
 
@@ -594,6 +623,44 @@ Host_Loadgame_f
 void Host_Loadgame_f(void)
 {
    char name[MAX_OSPATH];
+#ifdef _WIN32
+   char slash = '\\';
+#else
+   char slash = '/';
+#endif
+
+   if (cmd_source != src_command)
+      return;
+
+   if (Cmd_Argc() != 2) {
+      Con_Printf("load <savename> : load a game\n");
+      return;
+   }
+
+   cls.demonum = -1;		/* stop demo loop in case this fails */
+
+   if (COM_JoinPath(name, sizeof(name), com_savedir, slash, Cmd_Argv(1)) < 0) {
+      Con_Printf("ERROR: load name too long.\n");
+      return;
+   }
+   COM_DefaultExtension(name, sizeof(name), ".sav");
+
+   /* we can't call SCR_BeginLoadingPlaque, because too much stack space has */
+   /* been used.  The menu calls it before stuffing loadgame command */
+   /*      SCR_BeginLoadingPlaque(); */
+
+   Host_ReadSavegame(name);
+}
+
+/*
+===============
+Host_ReadSavegame
+
+Also used by retro_unserialize (the frontend's save states).
+===============
+*/
+qboolean Host_ReadSavegame(const char *name)
+{
    RFILE *f;
    char mapname[MAX_QPATH];
    float time, tfloat;
@@ -614,34 +681,12 @@ void Host_Loadgame_f(void)
    int entnum;
    int version;
    float spawn_parms[NUM_SPAWN_PARMS];
-#ifdef _WIN32
-   char slash = '\\';
-#else
-   char slash = '/';
-#endif
+   qboolean ok = false;
 
    if (!str)
-      return;
-
-   if (cmd_source != src_command)
-      goto done;
-
-   if (Cmd_Argc() != 2) {
-      Con_Printf("load <savename> : load a game\n");
-      goto done;
-   }
+      return false;
 
    cls.demonum = -1;		/* stop demo loop in case this fails */
-
-   if (COM_JoinPath(name, sizeof(name), com_savedir, slash, Cmd_Argv(1)) < 0) {
-      Con_Printf("ERROR: load name too long.\n");
-      goto done;
-   }
-   COM_DefaultExtension(name, sizeof(name), ".sav");
-
-   /* we can't call SCR_BeginLoadingPlaque, because too much stack space has */
-   /* been used.  The menu calls it before stuffing loadgame command */
-   /*      SCR_BeginLoadingPlaque(); */
 
    Con_Printf("Loading game from %s...\n", name);
    f = rfopen(name, "r");
@@ -753,9 +798,11 @@ void Host_Loadgame_f(void)
       CL_EstablishConnection("local");
       Host_Reconnect_f();
    }
+   ok = true;
 
 done:
    free(str);
+   return ok;
 }
 
 /* ============================================================================ */

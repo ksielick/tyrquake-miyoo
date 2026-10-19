@@ -49,6 +49,9 @@ void Host_EndGame(const char *message, ...);
 void Host_Frame(float time);
 void Host_Quit_f(void);
 void Host_Loadgame_f(void);
+qboolean Host_SavegameAllowed(void);
+qboolean Host_WriteSavegame(const char *name);
+qboolean Host_ReadSavegame(const char *name);
 void Host_ClientCommands(const char *fmt, ...);
 void Host_ShutdownServer(qboolean crash);
 

@@ -61,7 +61,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "input.h"
 
 #include "client.h"
+#include "console.h"
 #include "host.h"
+#include "screen.h"
+#include "server.h"
 
 qboolean isDedicated;
 
@@ -1161,6 +1164,9 @@ static void audio_step(void);
  * suppresses the dupe-last-frame path below in retro_run. */
 bool did_flip;
 
+static bool state_load_pending;
+static void state_load(void);
+
 void retro_run(void)
 {
    bool updated = false;
@@ -1193,6 +1199,9 @@ void retro_run(void)
     * the wait is gone. */
    if (g_rhi && g_rhi->kind != RHI_BACKEND_SOFTWARE && g_rhi->begin_frame)
       g_rhi->begin_frame();
+
+   if (state_load_pending)
+      state_load();
 
    perf_timing_section_begin(PERF_SECTION_RENDERVIEW);
    Host_Frame(1.0 / framerate);
@@ -1567,6 +1576,14 @@ bool retro_load_game(const struct retro_game_info *info)
    }
    s_float_output = use_float_output;
 
+   /* a state reloads the map and leaves out client-side effects: no
+    * run-ahead, rewind or netplay on top of it */
+   {
+      uint64_t quirks = RETRO_SERIALIZATION_QUIRK_INCOMPLETE;
+      environ_cb(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &quirks);
+   }
+   state_load_pending = false;
+
    return true;
 }
 
@@ -1597,19 +1614,121 @@ bool retro_load_game_special(unsigned type, const struct retro_game_info *info, 
    return false;
 }
 
+/*
+ * Save states (Onion's Game Switcher saves one on Menu and resumes from
+ * it) are a Quake savegame: the same text the "save" command writes,
+ * behind a small header.  Loading one reloads the map like "load" does,
+ * so states only exist in a single-player game, and they keep what a
+ * savegame keeps (not the client's particles, sounds, view kick...).
+ * The text goes through a file in /tmp (RAM on the Miyoo), because the
+ * savegame code writes and reads RFILEs.
+ */
+#define STATE_MAGIC "TQSAVE01"
+#define STATE_GAME 32
+/* magic, text length (LE uint32), game dir name ("id1", "hipnotic"...):
+ * RetroArch names a state after the content file, and every game's
+ * content is a pak0.pak, so one game would resume another's state */
+#define STATE_HEADER (12 + STATE_GAME)
+#define STATE_MIN_SIZE (2 * 1024 * 1024)
+
+static bool state_load_pending = false;
+
+static void state_tmp_path(char *path, size_t size)
+{
+#if defined(__unix__)
+   strlcpy(path, "/tmp/tyrquake_state.sav", size);
+#else
+   fill_pathname_join(path, com_savedir, "state_tmp.sav", size);
+#endif
+}
+
+/* A fixed size the edicts' text always fits in: RetroArch asks for the
+ * size at load time (and gives up on states if it is 0) and again before
+ * each save; the unused tail is zeros, which the state compression eats. */
 size_t retro_serialize_size(void)
 {
-   return 0;
+   size_t size = STATE_MIN_SIZE;
+
+   if (sv.active && (size_t)sv.num_edicts * 2048 + 65536 > size)
+      size = (size_t)sv.num_edicts * 2048 + 65536;
+   return size;
 }
 
 bool retro_serialize(void *data_, size_t size)
 {
-   return false;
+   char path[PATH_MAX_LENGTH];
+   unsigned char *data = (unsigned char *)data_;
+   void *text = NULL;
+   int64_t len = 0;
+   bool ok = false;
+
+   if (shutdown_core || !Host_SavegameAllowed())
+      return false;
+
+   state_tmp_path(path, sizeof(path));
+   if (Host_WriteSavegame(path) && filestream_read_file(path, &text, &len))
+   {
+      if (len > 0 && (size_t)len + STATE_HEADER <= size)
+      {
+         memcpy(data, STATE_MAGIC, 8);
+         data[8]  = (unsigned char)len;
+         data[9]  = (unsigned char)(len >> 8);
+         data[10] = (unsigned char)(len >> 16);
+         data[11] = (unsigned char)(len >> 24);
+         memset(data + 12, 0, STATE_GAME);
+         strlcpy((char *)data + 12, path_basename(com_gamedir), STATE_GAME);
+         memcpy(data + STATE_HEADER, text, (size_t)len);
+         memset(data + STATE_HEADER + len, 0, size - STATE_HEADER - (size_t)len);
+         ok = true;
+      }
+      else
+         Con_Printf("Save state: %d bytes don't fit in %u\n", (int)len, (unsigned)size);
+   }
+   free(text);
+   remove(path);
+   return ok;
 }
 
+/* The load itself waits for the next retro_run: RetroArch loads the
+ * Game Switcher's state right after retro_load_game, before quake.rc has
+ * run. */
 bool retro_unserialize(const void *data_, size_t size)
 {
-   return false;
+   const unsigned char *data = (const unsigned char *)data_;
+   char path[PATH_MAX_LENGTH];
+   size_t len;
+
+   if (size < STATE_HEADER || memcmp(data, STATE_MAGIC, 8))
+      return false;
+   len = data[8] | (data[9] << 8) | (data[10] << 16) | ((size_t)data[11] << 24);
+   if (!len || len > size - STATE_HEADER)
+      return false;
+   if (strncmp((const char *)data + 12, path_basename(com_gamedir), STATE_GAME))
+   {
+      Con_Printf("Save state: from game \"%.31s\", not \"%s\"\n",
+            (const char *)data + 12, path_basename(com_gamedir));
+      return false;
+   }
+
+   state_tmp_path(path, sizeof(path));
+   if (!filestream_write_file(path, data + STATE_HEADER, (int64_t)len))
+      return false;
+   state_load_pending = true;
+   return true;
+}
+
+static void state_load(void)
+{
+   char path[PATH_MAX_LENGTH];
+
+   state_load_pending = false;
+   state_tmp_path(path, sizeof(path));
+   Cbuf_Execute();              /* quake.rc and the rest of the start-up */
+   key_dest = key_game;         /* as the Load menu does */
+   SCR_BeginLoadingPlaque();
+   if (!Host_ReadSavegame(path))
+      Con_Printf("Save state: couldn't load it\n");
+   remove(path);
 }
 
 void *retro_get_memory_data(unsigned id)
