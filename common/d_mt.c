@@ -15,6 +15,8 @@
 #include "d_mt.h"
 #include "quakedef.h"
 #include "r_local.h"
+#include "d_iface.h"
+#include "perf_timing.h"
 
 /* 0 = draw everything on the calling thread (the original renderer) */
 cvar_t r_threads = { "r_threads", "1", true };
@@ -36,6 +38,13 @@ typedef struct {
 
 static d_drawcmd_t *cmds;
 static int numcmds, maxcmds;
+
+/* surface caches to build (D_CacheSurface allocated them while recording);
+ * both threads take jobs until none are left, then wait for all of them,
+ * since a band's spans may use a cache the other thread built */
+static drawsurf_t *jobs;
+static int numjobs, maxjobs;
+static volatile int job_next, jobs_done;
 
 /* worker thread */
 static pthread_t worker;
@@ -93,10 +102,43 @@ static void replay(int v0, int v1)
    d_band_v1 = 0x7fffffff;
 }
 
+static void build_caches(void)
+{
+   int i, spins = 0;
+
+   while ((i = __sync_fetch_and_add(&job_next, 1)) < numjobs) {
+      r_drawsurf = jobs[i];
+      R_DrawSurface();
+      __sync_fetch_and_add(&jobs_done, 1);
+   }
+   while (jobs_done < numjobs) {
+      if (++spins > 2000)
+         sched_yield();
+   }
+   __sync_synchronize();
+}
+
+void D_MT_RecordCacheBuild(void)
+{
+   if (numjobs == maxjobs) {
+      int n = maxjobs ? maxjobs * 2 : 256;
+      drawsurf_t *p = realloc(jobs, n * sizeof(*jobs));
+      if (!p) {
+         R_DrawSurface();	/* out of memory: build it now */
+         return;
+      }
+      jobs = p;
+      maxjobs = n;
+   }
+   jobs[numjobs++] = r_drawsurf;
+}
+
 static void *worker_main(void *arg)
 {
    int seen = 0;
    (void)arg;
+
+   R_SurfWorkerInit();
 
 #ifdef __linux__
    {
@@ -127,6 +169,7 @@ static void *worker_main(void *arg)
       seen = job_seq;
       __sync_synchronize();
 
+      build_caches();
       t0 = now_ms();
       replay(job_v0, job_v1);
       worker_ms = now_ms() - t0;
@@ -224,7 +267,7 @@ void D_MT_Flush(int v0, int v1)
    float f, fi, cm, cw;
    double t0, main_ms;
 
-   if (!numcmds)
+   if (!numcmds && !numjobs)
       return;
 
    slot = flush_slot < MAX_SPLIT_SLOTS ? flush_slot : MAX_SPLIT_SLOTS - 1;
@@ -237,12 +280,17 @@ void D_MT_Flush(int v0, int v1)
    /* worker takes the lower rows */
    job_v0 = mid;
    job_v1 = v1;
+   job_next = 0;
+   jobs_done = 0;
    __sync_synchronize();
    pthread_mutex_lock(&job_lock);
    job_seq++;
    pthread_cond_signal(&job_cond);
    pthread_mutex_unlock(&job_lock);
 
+   perf_timing_section_begin(PERF_SECTION_SW_CACHE);
+   build_caches();
+   perf_timing_section_end(PERF_SECTION_SW_CACHE);
    t0 = now_ms();
    replay(v0, mid);
    main_ms = now_ms() - t0;
@@ -256,6 +304,8 @@ void D_MT_Flush(int v0, int v1)
    }
    __sync_synchronize();
    numcmds = 0;
+   numjobs = 0;
+   d_sc_alloc_since_flush = 0;
 
    /* move the split towards equal drawing times (per-row costs of the
     * two parts from this flush) */

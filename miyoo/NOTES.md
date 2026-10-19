@@ -117,6 +117,32 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
   mid-demo: no seam between the bands.
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
+## Installed on the card (2026-10-19, owner asked)
+- `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` (md5 26a57e5b, commit 611d543 + version
+  string) and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
+  `tyrquake_libretro.so` is untouched.
+- `Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port`: `Core="tyrquake_miyoo"`
+  (was `tyrquake`; original in the workspace `backup/20261019-before-install/`). Revert = that line.
+- library_name stays "TyrQuake": same saves/config.cfg/core options (TyrQuake.opt) as the stock core.
+
+## Surface caches built on both threads (2026-10-19)
+- D_CacheSurface still decides and allocates on the recording thread (D_SCAlloc is not thread-safe),
+  but with two threads it queues the build (a copy of r_drawsurf); D_MT_Flush first lets both
+  threads take build jobs (atomic index), waits until all are built (a band may use a cache the
+  other thread built), then replays the spans. r_surf.c state is per thread (static D_TLS, block
+  drawers copy it into locals: R_SURFBLOCK_LOCALS), blocklights is a per-thread buffer. A flush is
+  forced once a quarter of the surface cache was allocated since the last one (deferred builds
+  must not get their block reused). TLS now 232 bytes.
+- 640x480 A/B (same session): demo1 1 thread avg 20.01 / 2 threads 15.65-15.68 (p90 18.9, p99
+  21.7-22.3); demo2 17.95 / 14.64 (p90 17.8, p99 21.7); demo3 20.61 / 16.38 (p90 19.7, p99 22.9).
+  Before this step (spans only) demo1 2 threads was avg 15.8-16.2, p90 20.3-20.9.
+- r_perf demo3 2 threads, per second: frame 13.7-19.4 = edge drawing 5.2-8.1 (D_DrawSurfaces
+  4.2-6.3 incl. parallel cache phase 0.05-1.8) + entities 1.7-3.5 + VID_Update 3.2-3.5 + audio ~2
+  (music decoding now that it is found). Next serial targets: VID_Update, entities, audio.
+- One run (demo1, r_threads 1, right after another run) gave no result: runtime.sh never started
+  the bench (a crash would still have written a result); two repeats were fine. bench_device.sh
+  now waits until MainUI is 5 s old, leaves a 'started' marker and prints diagnostics.
+
 ## Next
 - Profile where the 20 ms at 640x480 goes (r_perf sections: 3D view vs 2D/HUD vs palette/output vs
   sound), then: second core (split the screen like dethrace/REDRIVER2), NEON for spans/palette pass.

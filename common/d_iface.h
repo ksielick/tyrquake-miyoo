@@ -182,7 +182,14 @@ typedef struct {
     int surfheight;		/* in mipmapped texels */
 } drawsurf_t;
 
-extern drawsurf_t r_drawsurf;
+#ifndef D_TLS	/* thread-local span drawing state, see d_mt.h */
+#if defined(__GNUC__) && !defined(_WIN32)
+#define D_TLS __thread __attribute__((tls_model("initial-exec")))
+#else
+#define D_TLS
+#endif
+#endif
+extern D_TLS drawsurf_t r_drawsurf;
 
 void R_DrawSurface(void);
 

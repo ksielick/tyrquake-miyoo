@@ -26,28 +26,51 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 #include "sys.h"
 
-drawsurf_t r_drawsurf;
+/* Surface cache building runs on both drawing threads (d_mt.c), so its
+ * state is per thread.  The block drawers copy what they read into
+ * same-named locals (R_SURFBLOCK_LOCALS): thread-local reads in their
+ * row loops would cost more than the pixels. */
+D_TLS drawsurf_t r_drawsurf;
 
-int lightleft, sourcesstep, blocksize, sourcetstep;
-int lightright, lightleftstep, lightrightstep, blockdivshift;
+static D_TLS int sourcesstep, blocksize, sourcetstep;
+static D_TLS int blockdivshift;
 
-int				lightlefta[3];
-int				lightrighta[3];
-int				lightleftstepa[3], lightrightstepa[3];
+static D_TLS unsigned blockdivmask;
+static D_TLS void *prowdestbase;
+static D_TLS unsigned char *pbasesource;
+static D_TLS int surfrowbytes;
+static D_TLS int *r_lightptr;
 
-unsigned blockdivmask;
-void *prowdestbase;
-unsigned char *pbasesource;
-int surfrowbytes;		/* used by ASM files */
-/* unsigned *r_lightptr; */
-int *r_lightptr;
+static D_TLS int r_stepback;
+static D_TLS int r_lightwidth;
+static D_TLS unsigned char *r_source, *r_sourcemax;
 
-int r_stepback;
-int r_lightwidth;
-unsigned char *r_source, *r_sourcemax;
+static D_TLS int r_numhblocks;
+static D_TLS int r_numvblocks;
 
-static int r_numhblocks;
-int r_numvblocks;
+#define R_SURF_ACCESSOR(type, name) static inline type get_##name(void) { return name; }
+R_SURF_ACCESSOR(int, sourcetstep)
+R_SURF_ACCESSOR(void *, prowdestbase)
+R_SURF_ACCESSOR(unsigned char *, pbasesource)
+R_SURF_ACCESSOR(int, surfrowbytes)
+R_SURF_ACCESSOR(int *, r_lightptr)
+R_SURF_ACCESSOR(int, r_stepback)
+R_SURF_ACCESSOR(int, r_lightwidth)
+R_SURF_ACCESSOR(unsigned char *, r_sourcemax)
+R_SURF_ACCESSOR(int, r_numvblocks)
+
+#define R_SURFBLOCK_LOCALS \
+   int lightleft, lightright, lightleftstep, lightrightstep; \
+   int lightlefta[3], lightrighta[3], lightleftstepa[3], lightrightstepa[3]; \
+   int *r_lightptr = get_r_lightptr(); \
+   const int r_lightwidth = get_r_lightwidth(); \
+   const int sourcetstep = get_sourcetstep(); \
+   const int surfrowbytes = get_surfrowbytes(); \
+   unsigned char * const r_sourcemax = get_r_sourcemax(); \
+   const int r_stepback = get_r_stepback(); \
+   const int r_numvblocks = get_r_numvblocks(); \
+   void * const prowdestbase = get_prowdestbase(); \
+   unsigned char * const pbasesource = get_pbasesource()
 
 void R_DrawSurfaceBlock8_mip0(void);
 void R_DrawSurfaceBlock8_mip1(void);
@@ -76,7 +99,16 @@ static void	(*surfmiptableRGB[4])(void) =
 };
 
 /* static unsigned blocklights[18 * 18 * 3]; */
-int		blocklights[18*18*3]; /* LordHavoc: .lit support (*3 for RGB) */
+/* LordHavoc: .lit support (*3 for RGB); one buffer per drawing thread */
+static int blocklights_main[18*18*3] __attribute__((aligned(16)));
+static int blocklights_worker[18*18*3] __attribute__((aligned(16)));
+static D_TLS int *blocklights;
+
+/* the drawing thread (d_mt.c) builds surfaces into its own buffer */
+void R_SurfWorkerInit(void)
+{
+   blocklights = blocklights_worker;
+}
 
 /* SIMD detection for R_BuildLightMap's three per-surface kernels:
  *   (1) fill blocklights[] to ambient int constant
@@ -719,6 +751,9 @@ void R_DrawSurface(void)
    void (*pblockdrawer) (void);
    texture_t *mt;
 
+   if (!blocklights)
+      blocklights = blocklights_main;
+
    /* calculate the lightings */
    
    if (coloredlights)
@@ -804,6 +839,7 @@ void R_DrawSurface(void)
 
 void R_DrawSurfaceBlockRGB_mip0()
 {
+   R_SURFBLOCK_LOCALS;
 	unsigned int				v, i; 
 	unsigned int light[3];
 	unsigned int lightdelta[3], lightdeltastep[3];
@@ -861,6 +897,7 @@ void R_DrawSurfaceBlockRGB_mip0()
 
 void R_DrawSurfaceBlockRGB_mip1()
 {
+   R_SURFBLOCK_LOCALS;
 	unsigned int				v, i; 
 	unsigned int light[3];
 	unsigned int lightdelta[3], lightdeltastep[3];
@@ -918,6 +955,7 @@ void R_DrawSurfaceBlockRGB_mip1()
 
 void R_DrawSurfaceBlockRGB_mip2()
 {
+   R_SURFBLOCK_LOCALS;
 	unsigned int				v, i; 
 	unsigned int light[3];
 	unsigned int lightdelta[3], lightdeltastep[3];
@@ -974,6 +1012,7 @@ void R_DrawSurfaceBlockRGB_mip2()
 
 void R_DrawSurfaceBlockRGB_mip3()
 {
+   R_SURFBLOCK_LOCALS;
 	unsigned int				v, i; 
 	unsigned int light[3];
 	unsigned int lightdelta[3], lightdeltastep[3];
@@ -1037,6 +1076,7 @@ R_DrawSurfaceBlock8_mip0
 */
 void R_DrawSurfaceBlock8_mip0(void)
 {
+   R_SURFBLOCK_LOCALS;
    int v, i, b, lightstep, lighttemp, light;
    unsigned char pix;
    unsigned char *psource = pbasesource;
@@ -1085,6 +1125,7 @@ R_DrawSurfaceBlock8_mip1
 */
 void R_DrawSurfaceBlock8_mip1(void)
 {
+   R_SURFBLOCK_LOCALS;
    int v, i, b, lightstep, lighttemp, light;
    unsigned char pix;
    unsigned char *psource = pbasesource;
@@ -1131,6 +1172,7 @@ R_DrawSurfaceBlock8_mip2
 */
 void R_DrawSurfaceBlock8_mip2(void)
 {
+   R_SURFBLOCK_LOCALS;
    int v, i, b, lightstep, lighttemp, light;
    unsigned char pix;
 
@@ -1179,6 +1221,7 @@ R_DrawSurfaceBlock8_mip3
 */
 void R_DrawSurfaceBlock8_mip3(void)
 {
+   R_SURFBLOCK_LOCALS;
    int v, i, b, lightstep, lighttemp, light;
    unsigned char pix;
    unsigned char *psource = pbasesource;
@@ -1230,6 +1273,8 @@ FIXME: make this work
 */
 void R_DrawSurfaceBlock16(void)
 {
+   /* unused (FIXME above); the light state is no longer global */
+   int lightleft = 0, lightright = 0, lightleftstep = 0, lightrightstep = 0;
    int k;
    unsigned short *prowdest = (unsigned short *)prowdestbase;
 

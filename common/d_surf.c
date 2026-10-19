@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 /* d_surf.c: rasterization driver surface heap manager */
 
+#include "d_mt.h"
 #include "perf_timing.h"
 #include <stdint.h>
 #include <stddef.h>
@@ -33,7 +34,21 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 float surfscale;
 
+/* set by D_DrawSurfaces while it records for two threads (d_mt.c) */
+qboolean d_defer_cache_build;
+/* surface cache bytes handed out since the last flush */
+int d_sc_alloc_since_flush;
+
+
 int sc_size;
+
+/* A deferred build writes into its cache block only at the flush; if the
+ * blocks allocated since the last flush came near the cache size, a later
+ * allocation could reuse an earlier block.  Flush well before that. */
+qboolean D_SCFlushAdvised(void)
+{
+   return d_sc_alloc_since_flush > sc_size / 4;
+}
 surfcache_t *sc_rover, *sc_base;
 
 #define GUARDSIZE       4
@@ -184,6 +199,7 @@ D_SCAlloc(int width, int size)
       new_surf->height = (size - sizeof(*new_surf) + sizeof(new_surf->data)) / width;
 
    new_surf->owner = NULL;		/* should be set properly after return */
+   d_sc_alloc_since_flush += size;
 
    return new_surf;
 }
@@ -253,9 +269,14 @@ D_CacheSurface(const entity_t *e, msurface_t *surface, int miplevel)
    r_drawsurf.surf = surface;
 
    c_surf++;
-   perf_timing_section_begin(PERF_SECTION_SW_CACHE);
-   R_DrawSurface();
-   perf_timing_section_end(PERF_SECTION_SW_CACHE);
+   if (d_defer_cache_build) {
+      /* both drawing threads build it before the flush draws spans */
+      D_MT_RecordCacheBuild();
+   } else {
+      perf_timing_section_begin(PERF_SECTION_SW_CACHE);
+      R_DrawSurface();
+      perf_timing_section_end(PERF_SECTION_SW_CACHE);
+   }
 
    return surface->cachespots[miplevel];
 }

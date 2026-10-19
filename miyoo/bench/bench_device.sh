@@ -63,6 +63,7 @@ EOF
 # what runtime.sh runs in place of MainUI
 cat > $T/run.sh <<EOF
 #!/bin/sh
+touch $T/started
 echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 cd $RA
 T0=\$(cut -d' ' -f1 /proc/uptime)
@@ -86,14 +87,32 @@ echo "core $(md5sum "$CORE" | cut -c1-8) res $RES demo $DEMO maxframes ${MAXF:--
 echo "battery $(/customer/app/axp_test)"
 echo "load $(cat /proc/loadavg)"
 
+# Once (2026-10-19) a run started right after the previous one never ran: let a freshly
+# restarted MainUI settle before ending it.
+i=0
+while [ $i -lt 10 ]; do
+	MUI=$(pidof MainUI)
+	if [ -n "$MUI" ]; then
+		age=$(awk -v s="$(cut -d' ' -f22 /proc/$MUI/stat)" '{print int($1 - s / 100)}' /proc/uptime)
+		[ "$age" -ge 5 ] && break
+	fi
+	sleep 1
+	i=$((i + 1))
+done
 echo "sh $T/run.sh" > /tmp/cmd_to_run.sh
 killall MainUI
 i=0
+while [ ! -f $T/started ] && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
+[ -f $T/started ] || echo "runtime.sh didn't start the bench within 20 s"
 while [ ! -f $T/done ] && [ $i -lt $((WATCHDOG + 30)) ]; do sleep 1; i=$((i + 1)); done
 # give runtime.sh a moment to bring MainUI back
 sleep 3
 
-cat $T/result.txt 2>/dev/null || echo "no result (runtime.sh didn't run the bench?)"
+cat $T/result.txt 2>/dev/null || {
+	echo "no result: started=$([ -f $T/started ] && echo yes || echo no)" \
+		"retroarch=$(pidof retroarch) cmd_to_run=$(ls /tmp/cmd_to_run.sh /mnt/SDCARD/.tmp_update/cmd_to_run.sh 2>/dev/null)"
+	tail -5 $T/log.txt 2>/dev/null
+}
 grep -E "PERF|SW:|music|timedemo|frames .* seconds|Sys_Error|ERROR|Segmentation|hunk|exec config" $T/log.txt
 echo "MainUI back: $(pidof MainUI >/dev/null && echo yes || echo no)"
 echo "battery $(/customer/app/axp_test)"

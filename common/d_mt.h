@@ -57,6 +57,13 @@ void D_MT_Flush(int v0, int v1);
 /* run a call now on this thread (no recording, whole screen) */
 void D_MT_Exec(int op, espan_t *spans, int color);
 
+/* surface caches: built by both threads at the start of D_MT_Flush */
+extern qboolean d_defer_cache_build;
+extern int d_sc_alloc_since_flush;
+qboolean D_SCFlushAdvised(void);
+void D_MT_RecordCacheBuild(void);	/* copies r_drawsurf */
+void R_SurfWorkerInit(void);
+
 void D_MT_RegisterCvars(void);
 void D_MT_Shutdown(void);
 

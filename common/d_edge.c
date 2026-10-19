@@ -167,6 +167,7 @@ void D_DrawSurfaces(void)
 
    TransformVector(modelorg, transformed_modelorg);
    VectorCopy(transformed_modelorg, world_transformed_modelorg);
+   d_defer_cache_build = mt;
 
    for (s = &surfaces[1]; s < surface_p; s++)
    {
@@ -537,6 +538,8 @@ void D_DrawSurfaces(void)
 
          D_CalcGradients(pface);
          D_EMIT(D_OP_SPANS, s->spans, 0);
+         if (mt && D_SCFlushAdvised())
+            D_MT_Flush(d_flush_v0, d_flush_v1);
 
          if (s->insubmodel)
          {
@@ -557,6 +560,7 @@ void D_DrawSurfaces(void)
 
    if (mt)
       D_MT_Flush(d_flush_v0, d_flush_v1);
+   d_defer_cache_build = false;
 #undef D_EMIT
 }
 
