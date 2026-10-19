@@ -104,6 +104,19 @@ charging), 1200 MHz performance governor, audio on, audio_sync/vsync off. Budget
 - So the serial work is now about half the frame: VID_Update ~3.2 + entities ~2.8 + audio ~2.1
   + edge lists/setup. These are the next targets (see Next).
 
+## Trivia: vs the PCs of 1996-98 (owner's curiosity, 2026-10-19)
+Not the same test: ours is wall time per frame with lerp, OGG music and RetroArch's audio, on two
+cores; theirs are single-core DOS/WinQuake timedemos.
+- thandor.net (https://thandor.net/benchmark/33), Quake 1.08 DOS, `timedemo demo3`, 320x200,
+  default settings: Pentium 75 20.0 fps, P100 26.7, P133 32.7, P166 37.3, P200 41.4 (the fastest
+  when Quake came out, June 1996), Pentium Pro 200 49.8, Pentium II 266 64.1, Celeron 300A 67.8.
+- AnandTech Pentium II review (https://www.anandtech.com/show/181/5, WinQuake 640x480, demo not
+  given; seen only through a search summary, the page now redirects): PII 233 23.2 fps, PII 266
+  25.4, PII 300 31.7. Vogons: a Pentium MMX 266 gets ~10 fps at 640x480.
+- Miyoo Mini Plus, TyrQuake-Miyoo, demo3 at 640x480: 61 fps (16.3 ms). That is about twice a
+  Pentium II 300 at the same resolution, and about what a Celeron 300A did at 320x200 with 4.8x
+  fewer pixels. Not measured yet: demo3 at 320x240 on the current core, for a like-for-like line.
+
 ## Origins and the standalone 0.71 (2026-10-19)
 - Onion's stock core = plain libretro buildbot armhf build of commit a44247c (2020-11-13), GCC 5.4
   (Ubuntu 16.04 Linaro) — no Onion/Miyoo patches. Master is 438 commits later, same speed on demo1.
