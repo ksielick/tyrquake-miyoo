@@ -25,12 +25,27 @@ the level. Worth reporting upstream.
   (stat → __xstat, `-Wl,--wrap=stat`) keep it there.
 - `miyoo/tools/bench.sh <core.so|stock> [WxH] [demo] [max_frames]` — PC side: copies the scripts and
   core over SMB to `Roms/PORTS/Games/TyrQuake-bench/`, runs `miyoo/bench/bench_device.sh` over SSH.
+  Also `STATE=save|load`, `PORT=1`, `SHOTS=n` modes (save states, .port as content, fb dumps).
+- `miyoo/tools/shots.sh` + `shots_compare.py` — screenshot regression check (see that section).
+- `miyoo/tools/package_release.sh` — release zip (core, .info, shortcut) in `<workspace>/build/release/`.
+- `miyoo/card/` — files as installed on the SD card (`.info`, `1996 Quake.port` shortcut).
+- `miyoo/README.md` — user-facing README (install, Game Switcher, settings).
+- GitHub: private https://github.com/ksielick/tyrquake-miyoo, remote `miyoo`, branch `miyoo`.
+  Push with `git push miyoo refs/heads/miyoo:refs/heads/miyoo` (plain `miyoo miyoo` is ambiguous).
+- Tooling: `py -3` for the Python tools (not `-I`: numpy/PIL are in the user site-packages);
+  `mssh` returns its output filter's exit code (1 when the remote prints nothing) → `|| true` in
+  scripts; Git Bash needs `MSYS2_ARG_CONV_EXCL` to pass device paths like `/tmp/...` unchanged.
 - `tyrquake-0.71/` in the workspace: standalone TyrQuake 0.71 (Kevin Shanahan, 2022), reference only.
 
 ## Device facts
 - Onion RetroArch 1.22.2 (`retroarch_miyoo354` bind-mounted as `retroarch`), video `sdl_dingux` via
   MI_GFX, vsync off, audio_sync on (paces the game), `load_dummy_on_core_shutdown` on.
 - Stock core: `RetroArch/.retroarch/cores/tyrquake_libretro.so`, "v0.62", md5 f2d8ce31...
+- Launching a game stops SSH/SMB (Onion's runtime.sh kills dropbear, smbd...) unless
+  `.tmp_update/config/.keepServicesAlive` exists; the owner's is renamed `.keepServicesAlive_`
+  (off). Results over SMB can be read only after the game exits.
+- One device, several Claude sessions (portmanager-miyoo, ...): check that nobody else uses it
+  before a run; an overlapping run gives a half-drawn screen and wrong timings.
 - Quake: Ports shortcut → `Emu/PORTS/launch_retroarch.sh`, data `Roms/PORTS/Games/Quake Collection
   (TyrQuake)/{id1,music}`; core options `Saves/CurrentProfile/config/TyrQuake/TyrQuake.opt`; Quake
   config `Saves/CurrentProfile/saves/TyrQuake/id1/config.cfg` (viewsize 110).
@@ -331,9 +346,11 @@ Like dethrace's miyoo-emu `--compare`, but on the device: a timedemo replays the
   22.34); ~2 % above the 5ed39274 run (noise, or the now correct dithering per surface).
 
 ## Next
-Done: profile (r_perf sections), second core for spans and surface caches. To bring p90 under
-16.76 ms (heaviest first, see "Current performance"):
-- VID_Update (~3.2 ms): the palette pass split across the two threads and/or NEON.
+Done: profile (r_perf sections), second core for spans, surface caches and the palette pass
+(VID_Update now ~2.0 ms, of which the pass ~1.15; the rest is RetroArch's video_cb). Every
+optimisation from here on: shots identical to the one-thread reference (shots.sh +
+shots_compare.py) before timing. Now 640x480 avg 15.2 / 13.9 / 15.6 ms (demo1/2/3), p90
+17.3-18.9: to bring p90 under 16.76 ms (heaviest first, see "Current performance"):
 - Alias models (~2.8 ms in heavy scenes): draw them in bands on both threads like the spans.
 - Audio (~2.1 ms): mixing + OGG decoding; check what the music costs alone.
 - Core framerate override 59.67 to match the panel (each frame then gets 16.76 ms of game time).

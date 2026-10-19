@@ -7,9 +7,11 @@ TyrQuake core, and is started from Onion's **Ports** list.
 
 What it changes, compared with the stock core:
 
-- **Faster at 640x480.** The software renderer draws on both CPU cores. In the timedemos at
-  640x480 an average frame takes 14.6-16.3 ms instead of 18-20.6 ms. The screen refreshes at
-  59.67 Hz, so a frame has 16.76 ms.
+- **Faster at 640x480.** The software renderer, the surface caches and the final colour
+  conversion run on both CPU cores. In the timedemos at 640x480 an average frame takes
+  13.9-15.6 ms instead of 17.2-20.9 ms with the stock core (demo1-3). The screen refreshes at
+  59.67 Hz, so a frame has 16.76 ms. The picture is pixel-for-pixel the same as the original
+  one-thread renderer (checked with timedemo screenshots).
 - **Onion's Game Switcher works**, with the picture of where you left off. Menu saves the game and
   resumes it, also after turning the console off. See [Game Switcher](#game-switcher).
 - **Savegames load again.** The upstream core (May-October 2026) wrote savegames it could not load
