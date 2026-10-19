@@ -1,0 +1,20 @@
+#!/bin/sh
+# Retroarch Ports Script Template
+
+# main configuration :
+GameName="Quake (1996) (Port - TyrQuake)"
+Core="tyrquake_miyoo"
+# TyrQuake-Miyoo: the content is this shortcut (RomDir/RomFile point back at it, wherever it
+# sits under Shortcuts/), so RetroArch reports the shortcut's name and Onion's GameSwitcher
+# resumes the game; the core reads the game dir from QuakeDir (relative to Roms/PORTS/Games).
+QuakeDir="Quake Collection (TyrQuake)/id1"
+RomDir="../Shortcuts/${PWD##*/Shortcuts/}"
+RomFile="$(basename "$0")"
+KillAudioserver=0
+PerformanceMode=0
+
+# specific to this port :
+Arguments=""
+
+# running command line :
+/mnt/SDCARD/Emu/PORTS/launch_retroarch.sh "$GameName" "$Core" "$RomDir" "$RomFile" "$Arguments" "$KillAudioserver" "$PerformanceMode"

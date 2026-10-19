@@ -39,6 +39,15 @@ ln -s "$G/id1" $T/game/id1
 cp "$CORE" $T/tyrquake_miyoo_libretro.so
 cp "$(dirname "$CORE")/tyrquake_miyoo_libretro.info" $T/info/ 2>/dev/null
 : > $T/game/tqbench/bench.pak
+CONTENT=$T/game/tqbench/bench.pak
+# PORT=1: the content is an Onion-style shortcut, "$T/Shortcuts/Test/Bench Quake.port", whose
+# QuakeDir the core finds under $T/Games (= $T/game)
+if [ "$PORT" = 1 ]; then
+	ln -s $T/game $T/Games
+	mkdir -p $T/Shortcuts/Test
+	CONTENT="$T/Shortcuts/Test/Bench Quake.port"
+	printf '#!/bin/sh\nQuakeDir="tqbench"\n' > "$CONTENT"
+fi
 # PERF=1: r_perf logs core time per frame each second (wall minus core = RetroArch's share)
 # CFG: extra console commands, ';'-separated (e.g. CFG="r_threads 0")
 # LOAD=s0: load that savegame (copies of the player's saves) instead of a timedemo; use max_frames
@@ -92,13 +101,14 @@ cd $RA
 T0=\$(cut -d' ' -f1 /proc/uptime)
 HOME=$RA LD_PRELOAD=/mnt/SDCARD/miyoo/lib/libpadsp.so ./retroarch -v -c $T/retroarch.cfg \\
 	--appendconfig $T/override.cfg ${MAXF:+--max-frames=$MAXF} -L $T/tyrquake_miyoo_libretro.so \\
-	$T/game/tqbench/bench.pak > $T/log.txt 2>&1 &
+	"$CONTENT" > $T/log.txt 2>&1 &
 P=\$!
 ( sleep $WATCHDOG; kill -9 \$P ) 2>/dev/null &
 W=\$!
 U=/mnt/SDCARD/.tmp_update/bin/sendUDP
 case "$STATE" in
-save) ( sleep $SDELAY; \$U "SAVE_STATE_SLOT -1"; sleep 4; \$U QUIT ) > $T/udp.txt 2>&1 & ;;
+save) ( sleep $SDELAY; \$U -r 512 GET_STATUS; echo; \$U -r 128 "SAVE_STATE_SLOT -1"; echo
+	sleep 4; \$U QUIT ) > $T/udp.txt 2>&1 & ;;
 load) ( sleep $SDELAY; cut -d, -f2 /sys/class/graphics/fb0/pan > $T/fb.pan
 	head -c 3686400 /dev/fb0 > $T/fb.raw; \$U QUIT ) > $T/udp.txt 2>&1 & ;;
 esac

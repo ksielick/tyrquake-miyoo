@@ -1270,9 +1270,87 @@ static void extract_directory(char *out_dir, const char *in_dir, size_t size)
       strlcpy(out_dir, ".", size);
 }
 
+/*
+ * Onion's Ports shortcut as the content: "1996 Quake.port" with a line
+ *    QuakeDir="Quake Collection (TyrQuake)/id1"
+ * (relative to Roms/PORTS/Games, found by walking up from the shortcut, or
+ * absolute).  Onion's GameSwitcher only resumes a running game whose
+ * content name is the shortcut's name, and RetroArch names the save states
+ * after the content, so each shortcut also gets its own state file.
+ * Writes the game dir's pak0.pak path to out; false if this isn't a .port
+ * or it has no usable QuakeDir.
+ */
+static bool resolve_port_content(const char *port, char *out, size_t size)
+{
+   char dir[PATH_MAX_LENGTH];
+   char quakedir[PATH_MAX_LENGTH];
+   void *buf = NULL;
+   int64_t len = 0;
+   const char *p, *end;
+   int up;
+
+   if (!string_is_equal_noncase(path_get_extension(port), "port"))
+      return false;
+   if (!filestream_read_file(port, &buf, &len))
+      return false;
+
+   quakedir[0] = '\0';
+   for (p = (const char *)buf; p && *p; p = strchr(p, '\n') ? strchr(p, '\n') + 1 : NULL)
+   {
+      while (*p == ' ' || *p == '\t')
+         p++;
+      if (strncmp(p, "QuakeDir=", 9))
+         continue;
+      p += 9;
+      if (*p == '"')
+         p++;
+      for (end = p; *end && *end != '"' && *end != '\r' && *end != '\n'; end++)
+         ;
+      if ((size_t)(end - p) < sizeof(quakedir))
+      {
+         memcpy(quakedir, p, end - p);
+         quakedir[end - p] = '\0';
+      }
+      break;
+   }
+   free(buf);
+   if (!quakedir[0])
+   {
+      log_cb(RETRO_LOG_ERROR, "%s: no QuakeDir=\"...\" line\n", port);
+      return false;
+   }
+
+   if (path_is_absolute(quakedir))
+   {
+      fill_pathname_join(out, quakedir, "pak0.pak", size);
+      return path_is_directory(quakedir);
+   }
+   strlcpy(dir, port, sizeof(dir));
+   path_basedir(dir);
+   for (up = 0; up < 8 && dir[0]; up++)
+   {
+      char games[PATH_MAX_LENGTH];
+      char gamedir[PATH_MAX_LENGTH];
+
+      fill_pathname_join(games, dir, "Games", sizeof(games));
+      fill_pathname_join(gamedir, games, quakedir, sizeof(gamedir));
+      if (path_is_directory(gamedir))
+      {
+         fill_pathname_join(out, gamedir, "pak0.pak", size);
+         return true;
+      }
+      /* one level up: "a/b/" -> "a/" */
+      path_parent_dir(dir, strlen(dir));
+   }
+   log_cb(RETRO_LOG_ERROR, "%s: no Games/%s above it\n", port, quakedir);
+   return false;
+}
+
 bool retro_load_game(const struct retro_game_info *info)
 {
    unsigned i;
+   char port_content[PATH_MAX_LENGTH];
+   const char *content;
    char g_rom_dir[PATH_MAX_LENGTH];
    char g_save_dir[PATH_MAX_LENGTH];
    char cfg_file[PATH_MAX_LENGTH];
@@ -1289,7 +1367,16 @@ bool retro_load_game(const struct retro_game_info *info)
    if (!info)
       return false;
 
-   path_lower = strdup(info->path);
+   content = info->path;
+   if (string_is_equal_noncase(path_get_extension(content), "port"))
+   {
+      if (!resolve_port_content(content, port_content, sizeof(port_content)))
+         return false;
+      log_cb(RETRO_LOG_INFO, "Shortcut %s -> %s\n", content, port_content);
+      content = port_content;
+   }
+
+   path_lower = strdup(content);
 
    for (i=0; path_lower[i]; ++i)
        path_lower[i] = tolower(path_lower[i]);
@@ -1298,7 +1385,7 @@ bool retro_load_game(const struct retro_game_info *info)
 
    update_variables(true);
 
-   extract_directory(g_rom_dir, info->path, sizeof(g_rom_dir));
+   extract_directory(g_rom_dir, content, sizeof(g_rom_dir));
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &base_save_dir) && base_save_dir)
    {

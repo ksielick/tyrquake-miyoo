@@ -186,6 +186,26 @@ content file). Before this the core had no states, so Quake always started over.
 - Test (bench_device.sh STATE=save then STATE=load, LOAD=s1): state saved via sendUDP, resumed by
   auto-load; screenshot `build/shots/state_resume.png` = s1 (health 100, 27 shells).
 
+### Owner's first try on the card failed (2026-10-19), two Onion/RetroArch causes
+Onion source: github.com/OnionUI/Onion `src/keymon/menuButtonAction.h`, `src/gameSwitcher/gs_overlay.h`.
+- RetroArch's `cores/core_info.cache` (core_info_cache_enable) still had the old .info:
+  savestate_support_level 0 → RA refused every state. A hand-edited .info needs that cache deleted
+  (RA rebuilds it). The bench didn't see it: it uses its own info dir.
+- Menu (single press) runs `gameSwitcher --overlay` over the paused RetroArch. It treats the game as
+  running only if `GET_STATUS`'s content name equals the recent-list rom name, i.e. the `.port`
+  file's name; RA said `pak0`. Otherwise no romScreen is saved and picking the game kills RA and
+  relaunches it (the owner landed in the main menu). Long press / power-off don't check the name.
+- Fix without an extra file in id1: the content is the shortcut itself. `miyoo/card/1996 Quake.port`
+  passes `RomDir="../Shortcuts/${PWD##*/Shortcuts/}"`, `RomFile="$(basename "$0")"` (launch.sh cds
+  into the shortcut's dir and runs it by full path) and has `QuakeDir="Quake Collection (TyrQuake)/id1"`;
+  the core (resolve_port_content) reads QuakeDir and finds `Games/<QuakeDir>` walking up from the
+  shortcut. RA then reports `quake_1,<shortcut name>,crc32=...`, and each shortcut has its own state
+  file (`<shortcut name>.state.auto`). launch_retroarch.sh writes its `.game_config/` next to the
+  shortcut. `.info` supported_extensions `pak|port`.
+- Bench PORT=1 (a .port in /tmp/tqbench/Shortcuts/Test, QuakeDir under /tmp/tqbench/Games):
+  GET_STATUS `quake_1,Bench Quake,crc32=46182fb0`, `Bench Quake.state.auto` saved and resumed
+  (`build/shots/state_resume_port.png`). The bench runs click because they set audio_sync off.
+
 ## Next
 - Profile where the 20 ms at 640x480 goes (r_perf sections: 3D view vs 2D/HUD vs palette/output vs
   sound), then: second core (split the screen like dethrace/REDRIVER2), NEON for spans/palette pass.
