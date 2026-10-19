@@ -133,7 +133,9 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` (md5 26a57e5b, commit 611d543; replaced
   2026-10-19 by md5 c39cf8a5 = commit cb36289, caches built on both threads; version
   string; then by md5 43f87cab = commit 1e7f291, savegame fix + lerp on by default; then by md5
-  4e3da96e = commit 00c76b0, save states, with the .info saying savestate = "true") and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
+  4e3da96e = commit 00c76b0, save states, with the .info saying savestate = "true"; then by md5
+  fc33ab4d = commit fc14e41, .port as content, `cores/core_info.cache` deleted, shortcut replaced by
+  `miyoo/card/1996 Quake.port`, previous one in workspace `backup/20261019-gameswitcher/`) and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
   `tyrquake_libretro.so` is untouched.
 - `Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port`: `Core="tyrquake_miyoo"`
   (was `tyrquake`; original in the workspace `backup/20261019-before-install/`). Revert = that line.
