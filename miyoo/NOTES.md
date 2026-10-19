@@ -292,6 +292,13 @@ Like dethrace's miyoo-emu `--compare`, but on the device: a timedemo replays the
 - Reference = r_threads 0 (the original one-thread renderer); every optimisation must give the
   same pixels (the two-thread split must already).
 
+## Palette pass on both threads (2026-10-19, built 5ed39274, not yet tested on the device)
+- VID_Update's 8 bpp → RGB565 pass: top half on the calling thread, bottom half on the worker
+  (D_MT_RunBoth, a generic two-part job on d_mt's worker); 4 pixels per 32-bit load, two 32-bit
+  stores; width/rowbytes in locals (the stores made gcc reload `width` every 4 pixels).
+- r_perf prints `vidupd X (pal Y)`: pal = the palette pass alone, the rest is video_cb
+  (RetroArch's work). To check: the timing, and identical shots (shots_compare vs r_threads 0).
+
 ## Next
 Done: profile (r_perf sections), second core for spans and surface caches. To bring p90 under
 16.76 ms (heaviest first, see "Current performance"):

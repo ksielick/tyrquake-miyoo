@@ -2036,12 +2036,50 @@ static void VID_SaveTimedemoShot(const uint16_t *frame, size_t pitch)
    fclose(f);
 }
 
+/* The palette pass, vid.buffer (8 bpp) -> RGB565: rows [y0, y1), four pixels
+ * per 32-bit load and two 32-bit stores (little endian: the left pixel in
+ * the low half) */
+static void VID_PaletteRows(uint16_t *dst, size_t pitch, unsigned y0, unsigned y1)
+{
+   const uint16_t *pal = (const uint16_t*)&d_8to16table;
+   const uint8_t *buf  = (const uint8_t*)vid.buffer;
+   const size_t rowbytes = vid.rowbytes;
+   const unsigned w    = width;   /* locals: the stores could alias the globals */
+   unsigned x, y;
+
+   for (y = y0; y < y1; ++y)
+   {
+      const uint8_t *in = buf + (size_t)y * rowbytes;
+      uint16_t *out     = (uint16_t*)((uint8_t*)dst + (size_t)y * pitch);
+      for (x = 0; x + 4 <= w; x += 4)
+      {
+         uint32_t p, a, b;
+         memcpy(&p, in + x, 4);
+         a = pal[p & 255] | ((uint32_t)pal[(p >> 8) & 255] << 16);
+         b = pal[(p >> 16) & 255] | ((uint32_t)pal[p >> 24] << 16);
+         memcpy(out + x, &a, 4);
+         memcpy(out + x + 2, &b, 4);
+      }
+      for (; x < w; ++x)
+         out[x] = pal[in[x]];
+   }
+}
+
+/* both threads (D_MT_RunBoth): top half here, bottom half on the worker */
+static struct { uint16_t *dst; size_t pitch; unsigned mid; } pal_job;
+
+static void VID_PaletteHalf(int part, void *arg)
+{
+   (void)arg;
+   if (part == 0)
+      VID_PaletteRows(pal_job.dst, pal_job.pitch, 0, pal_job.mid);
+   else
+      VID_PaletteRows(pal_job.dst, pal_job.pitch, pal_job.mid, height);
+}
+
 void VID_Update(vrect_t *rects)
 {
-   unsigned x, y;
    size_t pitch;
-   const uint8_t *src          = (const uint8_t*)vid.buffer;
-   const uint16_t *pal         = (const uint16_t*)&d_8to16table;
    uint16_t *dst               = (uint16_t*)finalimage;
    struct retro_framebuffer fb;
 
@@ -2091,13 +2129,13 @@ void VID_Update(vrect_t *rects)
       pitch = fb.pitch;
    }
 
-   for (y = 0; y < height; ++y)
-   {
-      const uint8_t *in = src + (size_t)y * vid.rowbytes;
-      uint16_t *out     = (uint16_t*)((uint8_t*)dst + (size_t)y * pitch);
-      for (x = 0; x < width; ++x)
-         out[x] = pal[in[x]];
-   }
+   perf_timing_section_begin(PERF_SECTION_SW_PAL);
+   pal_job.dst   = dst;
+   pal_job.pitch = pitch;
+   pal_job.mid   = height / 2;
+   if (!D_MT_RunBoth(VID_PaletteHalf, &pal_job))
+      VID_PaletteRows(dst, pitch, 0, height);
+   perf_timing_section_end(PERF_SECTION_SW_PAL);
 
    if (td_shot_frame >= 0)
       VID_SaveTimedemoShot(dst, pitch);

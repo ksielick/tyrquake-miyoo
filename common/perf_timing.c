@@ -213,9 +213,9 @@ perf_timing_end_frame(void)
               (unsigned long long)(counter_accum[PERF_COUNTER_ZBUF_UPLOAD_BYTES]/ fc));
 
 #define SW_MS(s) (section_accum_usec[PERF_SECTION_SW_##s] / 1000.0 / (double)fc)
-   Con_Printf("SW: edgedraw %.2f (scan %.2f (dsurf %.2f (cache %.2f))) ents %.2f vidupd %.2f\n",
+   Con_Printf("SW: edgedraw %.2f (scan %.2f (dsurf %.2f (cache %.2f))) ents %.2f vidupd %.2f (pal %.2f)\n",
               SW_MS(EDGEDRAW), SW_MS(SCAN), SW_MS(DSURF), SW_MS(CACHE), SW_MS(ENTS),
-              SW_MS(VIDUPD));
+              SW_MS(VIDUPD), SW_MS(PAL));
 #undef SW_MS
 
    for (i = 0; i < PERF_SECTION_COUNT; i++)

@@ -55,6 +55,9 @@ static volatile int job_seq, done_seq;
 static volatile qboolean worker_quit;
 static int job_v0, job_v1;
 static double worker_ms;
+/* D_MT_RunBoth's job, instead of caches + spans when set */
+static void (*task_fn)(int part, void *arg);
+static void *task_arg;
 
 /* share of the rows drawn by the calling thread, per flush of a frame
  * (the flushes of a frame cover different parts of the screen) */
@@ -169,10 +172,14 @@ static void *worker_main(void *arg)
       seen = job_seq;
       __sync_synchronize();
 
-      build_caches();
-      t0 = now_ms();
-      replay(job_v0, job_v1);
-      worker_ms = now_ms() - t0;
+      if (task_fn) {
+         task_fn(1, task_arg);
+      } else {
+         build_caches();
+         t0 = now_ms();
+         replay(job_v0, job_v1);
+         worker_ms = now_ms() - t0;
+      }
 
       __sync_synchronize();
       done_seq = seen;
@@ -320,6 +327,32 @@ void D_MT_Flush(int v0, int v1)
          f = 0.9f;
    }
    split[slot] = f;
+}
+
+qboolean D_MT_RunBoth(void (*fn)(int part, void *arg), void *arg)
+{
+   int spins = 0;
+
+   if (!r_threads.value || !worker_running)
+      return false;
+
+   task_fn = fn;
+   task_arg = arg;
+   __sync_synchronize();
+   pthread_mutex_lock(&job_lock);
+   job_seq++;
+   pthread_cond_signal(&job_cond);
+   pthread_mutex_unlock(&job_lock);
+
+   fn(0, arg);
+
+   while (done_seq != job_seq) {
+      if (++spins > 2000)
+         sched_yield();
+   }
+   __sync_synchronize();
+   task_fn = NULL;
+   return true;
 }
 
 void D_MT_RegisterCvars(void)

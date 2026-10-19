@@ -64,6 +64,11 @@ qboolean D_SCFlushAdvised(void);
 void D_MT_RecordCacheBuild(void);	/* copies r_drawsurf */
 void R_SurfWorkerInit(void);
 
+/* any other job split in two: fn(0, arg) on this thread and fn(1, arg) on
+ * the worker, back when both are done; false (nothing run) if there is no
+ * worker (r_threads 0), then the caller does the whole job */
+qboolean D_MT_RunBoth(void (*fn)(int part, void *arg), void *arg);
+
 void D_MT_RegisterCvars(void);
 void D_MT_Shutdown(void);
 
