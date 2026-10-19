@@ -69,6 +69,14 @@ void R_SurfWorkerInit(void);
  * worker (r_threads 0), then the caller does the whole job */
 qboolean D_MT_RunBoth(void (*fn)(int part, void *arg), void *arg);
 
+/* alias models (d_polyse.c): between Begin and End the D_PolysetDraw
+ * calls are recorded, then drawn on both threads in bands of rows by
+ * D_PolysetFlush (also End); flush before drawing anything else that
+ * uses the z-buffer in between (sprites, shadows) */
+void D_PolysetBeginRecord(void);
+void D_PolysetFlush(void);
+void D_PolysetEndRecord(void);
+
 void D_MT_RegisterCvars(void);
 void D_MT_Shutdown(void);
 

@@ -31,6 +31,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sound.h"
 #include "sys.h"
 #include "view.h"
+#include "d_mt.h"
 #include "rhi.h"      /* g_rhi / g_rhi_compute_rendering /
                        * dispatch_3d_warp_screen -- when GPU warp is
                        * active R_RenderView calls it instead of
@@ -1108,6 +1109,7 @@ R_DrawEntitiesOnList(void)
 	case mod_sprite:
 	    VectorCopy(e->origin, r_entorigin);
 	    VectorSubtract(r_origin, r_entorigin, modelorg);
+	    D_PolysetFlush();	/* recorded alias models first */
 	    R_DrawSprite(e);
 	    break;
 
@@ -1170,7 +1172,10 @@ R_DrawEntitiesOnList(void)
 		 * draw OVER those low model verts.  Before-the-model side-steps
 		 * the issue. */
 		if (r_shadows.value != 0.0f)
+		{
+		    D_PolysetFlush();
 		    R_AliasDrawShadow(e);
+		}
 
 		R_AliasDrawModel(e, &lighting);
 	    }
@@ -1498,9 +1503,11 @@ R_RenderView(void)
     perf_timing_section_end(PERF_SECTION_SW_EDGEDRAW);
 
     perf_timing_section_begin(PERF_SECTION_SW_ENTS);
+    D_PolysetBeginRecord();
     R_DrawEntitiesOnList();
 
     R_DrawViewModel();
+    D_PolysetEndRecord();
     perf_timing_section_end(PERF_SECTION_SW_ENTS);
 
     R_DrawParticles();

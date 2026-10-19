@@ -163,7 +163,7 @@ extern void R_RotateBmodel(const entity_t *e);
 /* !!! if this is changed, it must be changed in asm_draw.h too !!! */
 #define	NEAR_CLIP	0.01
 
-extern int ubasestep, errorterm, erroradjustup, erroradjustdown;
+extern D_TLS int ubasestep, errorterm, erroradjustup, erroradjustdown;
 
 extern D_TLS fixed16_t sadjust, tadjust;
 extern D_TLS fixed16_t bbextents, bbextentt;

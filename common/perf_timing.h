@@ -74,6 +74,7 @@ enum {
    PERF_SECTION_SW_ENTS,          /* R_DrawEntitiesOnList + R_DrawViewModel */
    PERF_SECTION_SW_VIDUPD,        /* VID_Update: palette pass + video_cb */
    PERF_SECTION_SW_PAL,           /* VID_Update sub: the palette pass alone */
+   PERF_SECTION_SW_POLY,          /* SW_ENTS sub: alias model triangles (D_PolysetDraw) */
    PERF_SECTION_COUNT
 };
 

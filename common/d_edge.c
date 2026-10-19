@@ -31,7 +31,7 @@ static int miplevel;
 static vec3_t transformed_modelorg;
 
 float scale_for_mip;
-int ubasestep, errorterm, erroradjustup, erroradjustdown;
+D_TLS int ubasestep, errorterm, erroradjustup, erroradjustdown;
 
 /*
 =============

@@ -345,13 +345,31 @@ Like dethrace's miyoo-emu `--compare`, but on the device: a timedemo replays the
   14.82, p90 18.78, p99 22.18), demo2 13.87 (13.26, 17.27, 21.88), demo3 15.63 (15.62, 18.89,
   22.34); ~2 % above the 5ed39274 run (noise, or the now correct dithering per surface).
 
+## Alias models on both threads (2026-10-19, core 15755cdd)
+- r_perf `ents X (poly Y)`: poly = D_PolysetDraw (triangle rasterizing) was 88 % of the entity
+  time (demo1/3 per second: ents 1.8-3.6, poly 1.6-3.2 ms); vertex transform/clipping is small.
+- Between D_PolysetBeginRecord/EndRecord (R_RenderView, around the entities and the view model)
+  D_PolysetDraw/D_PolysetDrawFinalVerts record each call: triangles, a copy of the vertices they
+  use (arena), skin/colormap/lightcolor. D_PolysetFlush draws the list with D_MT_RunBoth: this
+  thread the upper rows, the worker the lower, split moved towards equal times. Triangles and
+  calls outside a band are skipped, span rows outside it are stepped over. Same call order in
+  each band, each pixel/z in one band → same picture. Sprites and r_shadows flush first; Phong
+  shading (r_phongshading) draws directly as before.
+- The rasterizer state is per thread (D_TLS, TLS now 536 bytes): the edge tables hold indices
+  into r_pv[3][6] (TLS addresses aren't constants); ubasestep/errorterm (d_edge.c) too; the
+  subdivided (small/far model) path no longer patches shared vertices for the seam (local
+  copies); skintable lookups became pskin + t * skinwidth (same texel). D_PolysetDrawSpans8 keeps
+  the state in locals.
+- Shots: 2 threads demo1-3 59/59 identical to the reference, r_threads 0 demo1/3 40/40.
+- 640x480, console alone, on the charger (85 %): demo1 avg 13.88 (median 13.44, p90 17.05, p99
+  21.10), demo2 13.08 (12.66, 15.80, 19.54), demo3 14.25 (14.19, 17.17, 20.62); before 15.23 /
+  13.87 / 15.63. r_perf demo1: ents 1.5-2.0 (poly 1.1-1.5).
+
 ## Next
-Done: profile (r_perf sections), second core for spans, surface caches and the palette pass
-(VID_Update now ~2.0 ms, of which the pass ~1.15; the rest is RetroArch's video_cb). Every
-optimisation from here on: shots identical to the one-thread reference (shots.sh +
-shots_compare.py) before timing. Now 640x480 avg 15.2 / 13.9 / 15.6 ms (demo1/2/3), p90
-17.3-18.9: to bring p90 under 16.76 ms (heaviest first, see "Current performance"):
-- Alias models (~2.8 ms in heavy scenes): draw them in bands on both threads like the spans.
+Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
+alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +
+shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/3), p90
+15.8-17.2: to bring p90 under 16.76 ms (heaviest first):
 - Audio (~2.1 ms): mixing + OGG decoding; check what the music costs alone.
 - Core framerate override 59.67 to match the panel (each frame then gets 16.76 ms of game time).
 - Later: entity alpha (0.71), fence textures (owner postponed).
