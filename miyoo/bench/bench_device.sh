@@ -29,6 +29,8 @@ pidof MainUI >/dev/null || { echo "MainUI not running (a game or app is open?)";
 # after SDELAY s to $T/fb.raw, quit. The states live in $TS, kept between the two runs.
 TS=/tmp/tqbench_states
 SDELAY=${SDELAY:-15}
+SHOTDIR=/mnt/SDCARD/Roms/.tqshots
+if [ -n "$SHOTS" ]; then rm -rf $SHOTDIR; mkdir -p $SHOTDIR; fi
 [ "$STATE" = save ] && rm -rf $TS
 mkdir -p $TS
 
@@ -106,6 +108,12 @@ P=\$!
 ( sleep $WATCHDOG; kill -9 \$P ) 2>/dev/null &
 W=\$!
 U=/mnt/SDCARD/.tmp_update/bin/sendUDP
+# SHOTS=n: the shown screen page every ~0.2 s from the start, n times, to $SHOTDIR/NN.raw
+# (640x480 BGRA, upside down; on the card, as /tmp is RAM)
+[ -n "$SHOTS" ] && ( i=0; while [ \$i -lt $SHOTS ]; do
+	y=\$(cut -d, -f2 /sys/class/graphics/fb0/pan)
+	dd if=/dev/fb0 bs=2560 skip=\$y count=480 of=$SHOTDIR/\$(printf %02d \$i).raw 2>/dev/null
+	i=\$((i + 1)); usleep 150000; done ) &
 case "$STATE" in
 save) ( sleep $SDELAY; \$U -r 512 GET_STATUS; echo; \$U -r 128 "SAVE_STATE_SLOT -1"; echo
 	sleep 4; \$U QUIT ) > $T/udp.txt 2>&1 & ;;

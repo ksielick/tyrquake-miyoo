@@ -678,6 +678,25 @@ void SCR_EndLoadingPlaque(void)
 
 /*
 ================
+SCR_HideForLoading
+
+SCR_BeginLoadingPlaque for when nothing is on screen yet (a save state
+loaded at start-up): no plaque, the screen stays as it is (black) and the
+console doesn't slide in or out, until SCR_EndLoadingPlaque at signon.
+================
+*/
+void SCR_HideForLoading(void)
+{
+   Con_ClearNotify();
+   scr_centertime_off = 0;
+   scr_con_current = 0;
+   scr_disabled_for_loading = true;
+   scr_disabled_time = 0;
+   scr_fullupdate = 0;
+}
+
+/*
+================
 SCR_AgeLoadingPlaque
 
 Advance scr_disabled_time by dt. Called once per Host_Frame after

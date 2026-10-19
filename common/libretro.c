@@ -1166,6 +1166,8 @@ bool did_flip;
 
 static bool state_load_pending;
 static void state_load(void);
+static unsigned run_frames;     /* retro_run calls since retro_load_game */
+#define STATE_WAIT_FRAMES 10
 
 void retro_run(void)
 {
@@ -1200,12 +1202,18 @@ void retro_run(void)
    if (g_rhi && g_rhi->kind != RHI_BACKEND_SOFTWARE && g_rhi->begin_frame)
       g_rhi->begin_frame();
 
+   /* RetroArch hands over its auto-loaded state (Onion's Game Switcher)
+    * after the first frame: Quake waits a few black frames for it, rather
+    * than showing its start-up console and demo before the state */
+   run_frames++;
    if (state_load_pending)
       state_load();
-
-   perf_timing_section_begin(PERF_SECTION_RENDERVIEW);
-   Host_Frame(1.0 / framerate);
-   perf_timing_section_end(PERF_SECTION_RENDERVIEW);
+   if (run_frames > STATE_WAIT_FRAMES || sv.active)
+   {
+      perf_timing_section_begin(PERF_SECTION_RENDERVIEW);
+      Host_Frame(1.0 / framerate);
+      perf_timing_section_end(PERF_SECTION_RENDERVIEW);
+   }
 
    if (rumble_touch_counter > -1)
    {
@@ -1670,6 +1678,7 @@ bool retro_load_game(const struct retro_game_info *info)
       environ_cb(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &quirks);
    }
    state_load_pending = false;
+   run_frames = 0;
 
    return true;
 }
@@ -1749,7 +1758,7 @@ bool retro_serialize(void *data_, size_t size)
    int64_t len = 0;
    bool ok = false;
 
-   if (shutdown_core || !Host_SavegameAllowed())
+   if (shutdown_core || !Host_SavegameAllowed(false))
       return false;
 
    state_tmp_path(path, sizeof(path));
@@ -1800,6 +1809,8 @@ bool retro_unserialize(const void *data_, size_t size)
    state_tmp_path(path, sizeof(path));
    if (!filestream_write_file(path, data + STATE_HEADER, (int64_t)len))
       return false;
+   log_cb(RETRO_LOG_INFO, "Save state: %u bytes, loading it after frame %u\n",
+         (unsigned)len, run_frames);
    state_load_pending = true;
    return true;
 }
@@ -1810,9 +1821,16 @@ static void state_load(void)
 
    state_load_pending = false;
    state_tmp_path(path, sizeof(path));
+   /* "Loading" over the picture if a game or demo is on screen; at
+    * start-up the screen stays as it is (black) instead of showing the
+    * console, until the level is in (SCR_EndLoadingPlaque at signon) */
+   if (cls.state == ca_active)
+      SCR_BeginLoadingPlaque();
+   else
+      SCR_HideForLoading();
+   cls.demonum = -1;            /* no start-up demo under the state */
    Cbuf_Execute();              /* quake.rc and the rest of the start-up */
    key_dest = key_game;         /* as the Load menu does */
-   SCR_BeginLoadingPlaque();
    if (!Host_ReadSavegame(path))
       Con_Printf("Save state: couldn't load it\n");
    remove(path);

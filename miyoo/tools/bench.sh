@@ -22,4 +22,4 @@ else
 	DCORE=$DEV/tyrquake_libretro.so
 	echo "local core $(md5sum "$CORE" | cut -c1-8)"
 fi
-"$MSSH" "WATCHDOG=${WATCHDOG:-240} PERF=${PERF:-0} CFG='$CFG' LOAD='$LOAD' STATE='$STATE' PORT='$PORT' SDELAY='${SDELAY:-15}' sh $DEV/bench_device.sh $DCORE $*"
+"$MSSH" "WATCHDOG=${WATCHDOG:-240} PERF=${PERF:-0} CFG='$CFG' LOAD='$LOAD' STATE='$STATE' PORT='$PORT' SHOTS='$SHOTS' SDELAY='${SDELAY:-15}' sh $DEV/bench_device.sh $DCORE $*"

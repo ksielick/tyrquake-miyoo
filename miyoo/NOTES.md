@@ -204,6 +204,14 @@ Onion source: github.com/OnionUI/Onion `src/keymon/menuButtonAction.h`, `src/gam
   shortcut. RA then reports `quake_1,<shortcut name>,crc32=...`, and each shortcut has its own state
   file (`<shortcut name>.state.auto`). launch_retroarch.sh writes its `.game_config/` next to the
   shortcut. `.info` supported_extensions `pak|port`.
+- Resuming showed the console and a demo frame with "Loading" first (owner; caught with
+  bench SHOTS=n, frame dumps every ~0.2 s, `build/shots/resume_seq_before.png`). RetroArch hands the
+  auto state over after the 1st retro_run, which had run quake.rc + the start-up demo; and before
+  that it calls retro_serialize for its undo buffer, whose "Not playing a local game." Con_Printf
+  redraws the screen (console) outside retro_run. Now: Host_SavegameAllowed(false) is quiet; the
+  first 10 retro_runs don't run Host_Frame (black, waiting for a state); state_load hides the screen
+  (SCR_HideForLoading: no console slide) and sets demonum -1 before running quake.rc. Result: black
+  then the game (`resume_seq_after.png`); a start without a state still shows console + demo.
 - A release zip can't delete files, so the shortcut drops `cores/core_info.cache` itself whenever
   the core's .info md5 differs from `cores/.tyrquake_miyoo_info.md5` (then writes it).
 - Release: `miyoo/tools/package_release.sh [tag]` → `<workspace>/build/release/TyrQuake-Miyoo-<tag>.zip`

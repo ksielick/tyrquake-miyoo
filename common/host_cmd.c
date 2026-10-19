@@ -493,36 +493,29 @@ static void Host_SavegameComment(char *text)
 ===============
 Host_SavegameAllowed
 
-Also asked by retro_serialize (the frontend's save states).
+Also asked by retro_serialize (the frontend's save states), quietly:
+before the game runs, a Con_Printf redraws the screen (the console).
 ===============
 */
-qboolean Host_SavegameAllowed(void)
+qboolean Host_SavegameAllowed(qboolean report)
 {
+   const char *why = NULL;
    int i;
 
-   if (!sv.active) {
-      Con_Printf("Not playing a local game.\n");
-      return false;
-   }
+   if (!sv.active)
+      why = "Not playing a local game.\n";
+   else if (cl.intermission)
+      why = "Can't save in intermission.\n";
+   else if (svs.maxclients != 1)
+      why = "Can't save multiplayer games.\n";
+   else
+      for (i = 0; i < svs.maxclients; i++)
+         if (svs.clients[i].active && (svs.clients[i].edict->v.health <= 0))
+            why = "Can't savegame with a dead player\n";
 
-   if (cl.intermission) {
-      Con_Printf("Can't save in intermission.\n");
-      return false;
-   }
-
-   if (svs.maxclients != 1) {
-      Con_Printf("Can't save multiplayer games.\n");
-      return false;
-   }
-
-   for (i = 0; i < svs.maxclients; i++) {
-      if (svs.clients[i].active && (svs.clients[i].edict->v.health <= 0)) {
-         Con_Printf("Can't savegame with a dead player\n");
-         return false;
-      }
-   }
-
-   return true;
+   if (why && report)
+      Con_Printf("%s", why);
+   return !why;
 }
 
 /*
@@ -590,7 +583,7 @@ static void Host_Savegame_f(void)
    if (cmd_source != src_command)
       return;
 
-   if (!Host_SavegameAllowed())
+   if (!Host_SavegameAllowed(true))
       return;
 
    if (Cmd_Argc() != 2) {
