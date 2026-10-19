@@ -204,6 +204,10 @@ Onion source: github.com/OnionUI/Onion `src/keymon/menuButtonAction.h`, `src/gam
   shortcut. RA then reports `quake_1,<shortcut name>,crc32=...`, and each shortcut has its own state
   file (`<shortcut name>.state.auto`). launch_retroarch.sh writes its `.game_config/` next to the
   shortcut. `.info` supported_extensions `pak|port`.
+- A release zip can't delete files, so the shortcut drops `cores/core_info.cache` itself whenever
+  the core's .info md5 differs from `cores/.tyrquake_miyoo_info.md5` (then writes it).
+- Release: `miyoo/tools/package_release.sh [tag]` → `<workspace>/build/release/TyrQuake-Miyoo-<tag>.zip`
+  (core, .info in cores/ and core_info/, the shortcut); user docs in `miyoo/README.md`.
 - Bench PORT=1 (a .port in /tmp/tqbench/Shortcuts/Test, QuakeDir under /tmp/tqbench/Games):
   GET_STATUS `quake_1,Bench Quake,crc32=46182fb0`, `Bench Quake.state.auto` saved and resumed
   (`build/shots/state_resume_port.png`). The bench runs click because they set audio_sync off.

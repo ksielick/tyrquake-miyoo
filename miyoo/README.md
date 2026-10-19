@@ -1,0 +1,130 @@
+# TyrQuake-Miyoo
+
+The [TyrQuake libretro core](https://github.com/libretro/tyrquake) (Quake), tuned for the
+**Miyoo Mini Plus** with [OnionOS](https://github.com/OnionUI/Onion) at the screen's native
+640x480. It runs in Onion's RetroArch as its own core, **Quake (TyrQuake-Miyoo)**, next to the stock
+TyrQuake core, and is started from Onion's **Ports** list.
+
+What it changes, compared with the stock core:
+
+- **Faster at 640x480.** The software renderer draws on both CPU cores. In the timedemos at
+  640x480 an average frame takes 14.6-16.3 ms instead of 18-20.6 ms. The screen refreshes at
+  59.67 Hz, so a frame has 16.76 ms.
+- **Onion's Game Switcher works**, with the picture of where you left off. Menu saves the game and
+  resumes it, also after turning the console off. See [Game Switcher](#game-switcher).
+- **Savegames load again.** The upstream core (May-October 2026) wrote savegames it could not load
+  back ("Couldn't spawn server maps//.bsp"). This core writes them correctly and loads those
+  broken ones too.
+- **Smooth animation and smooth movement** are on by default.
+- Software-renderer fixes taken from standalone TyrQuake 0.71: large maps no longer drop
+  surfaces or edges, liquids with non-64x64 textures, and oversized faces.
+
+## Installing
+
+What you need:
+
+- A Miyoo Mini Plus with OnionOS and its **Ports** list. The game goes in Onion's Quake folder,
+  `Roms/PORTS/Games/Quake Collection (TyrQuake)/`.
+- Quake's data: `id1/pak0.pak` (the shareware episode) and, for the full game, `id1/pak1.pak`.
+  It is not included.
+- The release zip, `TyrQuake-Miyoo-<version>.zip`.
+
+Steps:
+
+1. Put the data in `Roms/PORTS/Games/Quake Collection (TyrQuake)/id1/` on the SD card.
+2. Unzip the release onto the root of the SD card, merging its `RetroArch` and `Roms` folders with
+   the ones already there. It adds:
+   - the core, `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so`;
+   - its description, `tyrquake_miyoo_libretro.info`, in `cores/` and `core_info/`;
+   - the Ports shortcut, `Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port`.
+     An existing shortcut with that name is replaced.
+3. On the Miyoo: *Games → Ports → 1996 Quake*. Refresh the list from its menu if it doesn't show.
+
+The first start takes a few seconds longer: RetroArch rebuilds its list of cores (see below).
+
+Music (optional): the soundtrack as `id1/music/track02.ogg` ... `track11.ogg`. The core looks for it
+inside the game's folder.
+
+Saves and settings are shared with the stock TyrQuake core: Quake's savegames and `config.cfg` in
+`Saves/CurrentProfile/saves/TyrQuake/id1/`, the core options in
+`Saves/CurrentProfile/config/TyrQuake/`.
+
+## Game Switcher
+
+Onion's Menu button works as with the emulators:
+
+- **Menu (short press)**: the Game Switcher opens over the paused game and saves Quake's state and
+  picture. Picking Quake goes back to the game; picking another game closes Quake.
+- **Menu (held)**, or **turning the console off**: Quake's state is saved and you go back to Onion.
+- **Resuming** from the Game Switcher, or after turning the console on: the state is loaded.
+
+A state is a Quake savegame, kept by RetroArch as
+`Saves/CurrentProfile/states/TyrQuake/1996 Quake.state.auto`. Resuming from one reloads the level
+(1-2 s, with Quake's "Loading" plaque) and puts everything back as it was: you, the monsters, doors
+and items. Short-lived effects (flying debris, sounds already playing) are not kept.
+
+A state can be saved only where Quake lets you save: in a single-player game, not on the
+end-of-level screen, not while dead, and not in the menus or the demos. Otherwise the previous
+state stays.
+
+### Why the shortcut is the content
+
+Onion's Game Switcher resumes a game only when RetroArch's content name equals the shortcut's
+name. A plain shortcut runs `id1/pak0.pak`, so RetroArch reports `pak0` and Onion restarts Quake
+instead of resuming it. This shortcut hands RetroArch **the shortcut itself** as the content:
+
+```sh
+QuakeDir="Quake Collection (TyrQuake)/id1"
+RomDir="../Shortcuts/${PWD##*/Shortcuts/}"
+RomFile="$(basename "$0")"
+```
+
+`RomDir`/`RomFile` point Onion's launcher back at the shortcut, wherever it sits under
+`Shortcuts/`. When the core gets a `.port` file, it reads `QuakeDir` (relative to
+`Roms/PORTS/Games`, or an absolute path) and loads that game folder. RetroArch then reports
+`1996 Quake`, and each shortcut has its own state file. Without this, every Quake game folder would
+share one `pak0` state.
+
+For a mission pack, copy the shortcut under another name and change `QuakeDir`, e.g.
+`Scourge of Armagon.port` with `QuakeDir="Quake Collection (TyrQuake)/hipnotic"`. The data goes in
+`hipnotic/` next to `id1/`. A state from another game folder is never loaded.
+
+### RetroArch's core list cache
+
+RetroArch keeps the cores' `.info` files in `RetroArch/.retroarch/cores/core_info.cache` and does
+not notice when one changes. With an old copy it thinks this core has no save states and the
+Game Switcher saves nothing. The shortcut deletes that cache once whenever this core's `.info`
+changes, for example after an update, and RetroArch rebuilds it. If you start the core some other
+way after updating, delete `core_info.cache` yourself.
+
+## Settings
+
+In RetroArch's quick menu, *Core Options*:
+
+- **Internal resolution**: `640x480` is the screen's native size. `320x240` is about twice as
+  fast.
+- **Framerate**: if the sound crackles in heavy scenes, `50` gives each frame more time.
+
+Both take effect after restarting the game. An audio latency of 128 ms (*Settings → Audio →
+Output → Audio Latency*) also helps against crackling.
+
+## Building
+
+From Git Bash on Windows, with the Arm GNU toolchain 13.3 (`arm-none-linux-gnueabihf`, path in
+`TC`, see the script):
+
+```sh
+miyoo/build/build_core.sh                 # -> <workspace>/build/core/tyrquake_libretro.so
+miyoo/tools/package_release.sh v1.0       # -> <workspace>/build/release/TyrQuake-Miyoo-v1.0.zip
+```
+
+The build fails if the core needs a glibc newer than OnionOS's 2.28. After changing a header, build
+with `FORCE=1`. The release script needs Python 3.
+
+`miyoo/tools/bench.sh` runs a timedemo on the console over SSH, kept apart from the player's setup
+in `/tmp/tqbench`. `miyoo/NOTES.md` has the measurements, the renderer changes and the device
+details.
+
+## License
+
+GPL v2, as TyrQuake and Quake. Quake's data is not included.
