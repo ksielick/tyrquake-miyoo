@@ -3,6 +3,18 @@
 Goal: Quake through the TyrQuake libretro core in Onion's RetroArch runs poorly at the native
 640x480; make it run well there (stock 1200 MHz first; second core and NEON before overclocking).
 
+## IMPORTANT: savegames did not load (fixed 2026-10-19)
+Upstream libretro bug (commit 32da12a, 2026-05-04, "hostile-content hardening"): Host_SavegameComment
+stopped turning spaces into '_', so a save of a level with a spaced name or with "kills:  0/  0"
+gets spaces in its first line. Host_Loadgame_f reads that line as one "%s" word, every later
+field shifts, and the map name comes out as garbage ("Couldn't spawn server maps//.bsp", "maps/of.bsp").
+Every save made with the current libretro core is affected; Onion's 2020 core (a44247c) is not.
+Fix: the writer replaces ' ' again (c <= 0x20), and both readers (Host_Loadgame_f, the load menu's
+M_ScanSaves) read the whole comment line ("%[^
+]"), so the owner's two broken saves (s0, s1) load too.
+Verified on the device: both load ("Loading game from s0.sav/s1.sav", no error), screenshot of s1 shows
+the level. Worth reporting upstream.
+
 ## Layout
 - `G:\Emulacja\tyrquake-miyoo\repos\tyrquake` — clone of github.com/libretro/tyrquake, branch `miyoo`
   (base: upstream master 67db338, 2026-10-12).
@@ -118,7 +130,8 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
 ## Installed on the card (2026-10-19, owner asked)
-- `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` (md5 26a57e5b, commit 611d543 + version
+- `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` (md5 26a57e5b, commit 611d543; replaced
+  2026-10-19 by md5 c39cf8a5 = commit cb36289, caches built on both threads; version
   string) and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
   `tyrquake_libretro.so` is untouched.
 - `Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port`: `Core="tyrquake_miyoo"`
@@ -142,6 +155,18 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - One run (demo1, r_threads 1, right after another run) gave no result: runtime.sh never started
   the bench (a crash would still have written a result); two repeats were fine. bench_device.sh
   now waits until MainUI is 5 s old, leaves a 'started' marker and prints diagnostics.
+
+## Smooth animation / movement on by default (2026-10-19, owner asked)
+r_lerpmodels and r_lerpmove default to 1 (menu "Smooth Animation" / "Smooth Movement"); a value in
+config.cfg still wins (the owner's has both 1). Test with them on. 640x480, 2 threads, both on
+(console woken from sleep just before): demo1 avg 15.61 (p90 18.8, p99 21.4), demo2 14.60 (18.2,
+21.5), demo3 16.26 (19.4, 21.8) — same as with them off.
+
+## Idea: Onion GameSwitcher / RetroArch save states (owner, 2026-10-19)
+The core has no save states (retro_serialize_size 0), so the GameSwitcher can't resume Quake. Possible:
+serialize = the Quake savegame text written to memory (needs a fixed upper bound for
+retro_serialize_size), unserialize = Host_Loadgame_f from memory (map reload, ~1-2 s); only while a
+single-player server runs. Not started.
 
 ## Next
 - Profile where the 20 ms at 640x480 goes (r_perf sections: 3D view vs 2D/HUD vs palette/output vs

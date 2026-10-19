@@ -478,7 +478,10 @@ static void Host_SavegameComment(char *text)
     * BSPs are user-installed and may not be trusted. */
    for (i = 0; i < SAVEGAME_COMMENT_LENGTH; i++) {
       unsigned char c = (unsigned char)text[i];
-      if (c < 0x20 || c == 0x7f)
+      /* ' ' too, as in stock Quake: the loaders read the comment as
+       * one "%s" word.  Dropping this (2026-05) made every save with a
+       * spaced level name or "kills:  0/  0" unloadable ("maps//.bsp"). */
+      if (c <= 0x20 || c == 0x7f)
          text[i] = '_';
    }
 
@@ -658,7 +661,9 @@ void Host_Loadgame_f(void)
    /* Bound the %s reads.  Without a width modifier, scanf
     * reads until whitespace with no limit -- a corrupt or
     * hostile savegame can overflow the destination buffer. */
-   rfscanf(f, "%32767s\n", str);
+   /* the whole comment line: saves written by the 2026-05..10 cores
+    * have spaces in it */
+   rfscanf(f, "%32767[^\n]\n", str);
    for (i = 0; i < NUM_SPAWN_PARMS; i++)
       rfscanf(f, "%f\n", &spawn_parms[i]);
 

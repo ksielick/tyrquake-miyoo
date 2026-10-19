@@ -529,7 +529,7 @@ static void M_ScanSaves(void)
       if (!f)
          continue;
       rfscanf(f, "%i\n", &version);
-      rfscanf(f, "%79s\n", comment);
+      rfscanf(f, "%79[^\n]\n", comment);	/* whole line: see Host_Loadgame_f */
       /* memcpy with explicit length avoids both -Wstringop-truncation
        * (which fires on strncpy(..., sizeof(dst)-1) as a known-truncate
        * idiom) and the missing-NUL footgun strncpy has when the source

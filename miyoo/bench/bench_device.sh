@@ -31,7 +31,15 @@ cp "$CORE" $T/core.so
 : > $T/game/tqbench/bench.pak
 # PERF=1: r_perf logs core time per frame each second (wall minus core = RetroArch's share)
 # CFG: extra console commands, ';'-separated (e.g. CFG="r_threads 0")
-printf 'r_perf %s\n%s\ntimedemo_quit 1\ntimedemo %s\n' "${PERF:-0}" "$(echo "$CFG" | tr ';' '\n')" "$DEMO" \
+# LOAD=s0: load that savegame (copies of the player's saves) instead of a timedemo; use max_frames
+if [ -n "$LOAD" ]; then
+	cp /mnt/SDCARD/Saves/CurrentProfile/saves/TyrQuake/id1/*.sav $T/saves/tqbench/ 2>/dev/null
+	ACT="load $LOAD"
+else
+	ACT="timedemo_quit 1
+timedemo $DEMO"
+fi
+printf 'r_perf %s\n%s\n%s\n' "${PERF:-0}" "$(echo "$CFG" | tr ';' '\n')" "$ACT" \
 	> $T/game/tqbench/autoexec.cfg
 echo "autoexec: $(tr '\n' ';' < $T/game/tqbench/autoexec.cfg)"
 # the player's Quake settings (viewsize etc.), so the scene matches real play
@@ -113,6 +121,6 @@ cat $T/result.txt 2>/dev/null || {
 		"retroarch=$(pidof retroarch) cmd_to_run=$(ls /tmp/cmd_to_run.sh /mnt/SDCARD/.tmp_update/cmd_to_run.sh 2>/dev/null)"
 	tail -5 $T/log.txt 2>/dev/null
 }
-grep -E "PERF|SW:|music|timedemo|frames .* seconds|Sys_Error|ERROR|Segmentation|hunk|exec config" $T/log.txt
+grep -E "PERF|SW:|music|timedemo|Loading|load|couldn|Couldn|ERROR|frames .* seconds|Sys_Error|ERROR|Segmentation|hunk|exec config" $T/log.txt
 echo "MainUI back: $(pidof MainUI >/dev/null && echo yes || echo no)"
 echo "battery $(/customer/app/axp_test)"

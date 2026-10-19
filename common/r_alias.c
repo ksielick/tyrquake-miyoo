@@ -82,11 +82,11 @@ typedef struct {
 } aedge_t;
 
 /*
- * incomplete model interpolation support
- * -> default to off and don't save to config for now
+ * model interpolation ("Smooth Animation" / "Smooth Movement" in the menu);
+ * TyrQuake-Miyoo turns both on by default (a config.cfg value still wins)
  */
-cvar_t r_lerpmodels = { "r_lerpmodels", "0", true };
-cvar_t r_lerpmove = { "r_lerpmove", "0", true };
+cvar_t r_lerpmodels = { "r_lerpmodels", "1", true };
+cvar_t r_lerpmove = { "r_lerpmove", "1", true };
 
 static aedge_t aedges[12] = {
     {0, 1}, {1, 2}, {2, 3}, {3, 0},
