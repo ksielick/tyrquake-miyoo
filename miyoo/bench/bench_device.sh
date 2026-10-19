@@ -51,6 +51,7 @@ if [ "$PORT" = 1 ]; then
 	printf '#!/bin/sh\nQuakeDir="tqbench"\n' > "$CONTENT"
 fi
 # PERF=1: r_perf logs core time per frame each second (wall minus core = RetroArch's share)
+# SYNC=1: audio_sync on as in play (paced by the sound, ~60 fps): compare "timedemo cpu"
 # CFG: extra console commands, ';'-separated (e.g. CFG="r_threads 0")
 # LOAD=s0: load that savegame (copies of the player's saves) instead of a timedemo; use max_frames
 if [ -n "$LOAD" ]; then
@@ -70,6 +71,12 @@ cp /mnt/SDCARD/Saves/CurrentProfile/saves/TyrQuake/id1/config.cfg $T/saves/tqben
 # core options: the player's, with the resolution under test
 grep -v tyrquake_resolution /mnt/SDCARD/Saves/CurrentProfile/config/TyrQuake/TyrQuake.opt > $T/core.opt
 echo "tyrquake_resolution = \"$RES\"" >> $T/core.opt
+# FPS=60/auto/...: the core framerate instead of the player's (theirs was 40 on 2026-10-19)
+if [ -n "$FPS" ]; then
+	grep -v tyrquake_framerate $T/core.opt > $T/core.opt.tmp && mv $T/core.opt.tmp $T/core.opt
+	echo "tyrquake_framerate = \"$FPS\"" >> $T/core.opt
+fi
+echo "core options: $(grep -E "framerate|resolution" $T/core.opt | tr '\n' ' ')"
 cp $RA/.retroarch/retroarch.cfg $T/retroarch.cfg
 cat > $T/override.cfg <<EOF
 savefile_directory = "$T/saves"
@@ -89,7 +96,7 @@ sort_savefiles_by_content_enable = "false"
 libretro_log_level = "0"
 log_verbosity = "true"
 log_to_file = "false"
-audio_sync = "false"
+audio_sync = "$([ "${SYNC:-0}" = 1 ] && echo true || echo false)"
 video_vsync = "false"
 fps_show = "false"
 EOF
@@ -160,7 +167,7 @@ cat $T/result.txt 2>/dev/null || {
 		"retroarch=$(pidof retroarch) cmd_to_run=$(ls /tmp/cmd_to_run.sh /mnt/SDCARD/.tmp_update/cmd_to_run.sh 2>/dev/null)"
 	tail -5 $T/log.txt 2>/dev/null
 }
-grep -E "PERF|SW:|music|timedemo|Loading|load|couldn|Couldn|ERROR|frames .* seconds|Sys_Error|ERROR|Segmentation|hunk|exec config|[Ss]tate|[Ss]erializ|Audio:|Music" $T/log.txt
+grep -E "PERF|SW:|music|timedemo|Loading|load|couldn|Couldn|ERROR|frames .* seconds|Sys_Error|ERROR|Segmentation|hunk|exec config|[Ss]tate|[Ss]erializ|Audio:|Music|cpu|core options" $T/log.txt
 [ -n "$STATE" ] && { echo "states: $(ls -l $TS | tail -n +2)"; cat $T/udp.txt; }
 echo "MainUI back: $(pidof MainUI >/dev/null && echo yes || echo no)"
 echo "battery $(/customer/app/axp_test)"

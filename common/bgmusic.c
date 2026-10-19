@@ -93,7 +93,7 @@ static snd_stream_t *bgmstream = NULL;
  * decoder holds while it reads).  Without the thread the stream is decoded
  * in BGM_UpdateStream as before.
  */
-#if defined(__unix__) && !defined(__EMSCRIPTEN__)
+#if defined(__unix__) && !defined(__EMSCRIPTEN__) && !defined(NO_BGM_THREAD)
 #define BGM_THREAD 1
 #include <pthread.h>
 #include <sched.h>

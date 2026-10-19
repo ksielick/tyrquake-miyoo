@@ -394,6 +394,21 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
 - A/B alternated, 640x480 avg: demo1 13.79/13.75 → 13.38/13.56, demo3 14.32/14.36 → 14.01/14.05
   (p90 about -0.3).
 
+## Paced like play: audio_sync on, 60 fps (2026-10-19, owner asked)
+- bench: `SYNC=1` keeps audio_sync on (Onion's setting; the sound paces the game), `FPS=60`
+  overrides the core framerate option. The timedemo now also prints `timedemo cpu`: process
+  CPU per frame (getrusage, all threads incl. RetroArch's) and the main thread alone: with
+  pacing the wall time per frame is the refresh whatever the load, so CPU time is the measure.
+- **The owner's core options have `tyrquake_framerate = "40"`**: the game runs at 40 fps in play
+  (SYNC=1 without FPS: 39.8 fps, 25.1 ms per frame). The bench always copied that file, but
+  without audio_sync the framerate only set the game time step.
+- FPS=60 SYNC=1, 640x480, alternated: both builds hold ~59.5 fps (avg 16.8 ms; per-frame wall
+  times jump with the audio blocks: median ~17, p90 20). Main thread CPU per frame, no music
+  thread / music thread: demo1 12.76-12.80 / 12.29-12.57, demo3 13.29-13.39 / 12.75-13.09; other
+  threads +0.65 (the decoder); whole process ~19.7-20.8 ms per frame (~120 % of a core).
+- r_perf at 60 fps: audio_batch_cb 2.1-4.4 ms per frame is now mostly waiting for the sound
+  (the spare time); heaviest second: render 13.7, cb 2.1.
+
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +

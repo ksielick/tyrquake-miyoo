@@ -1,3 +1,4 @@
+#define _GNU_SOURCE /* RUSAGE_THREAD */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -64,6 +65,26 @@ static float td_frame_ms[TD_MAX_FRAMES];
 static int td_wall_frames;
 static double td_wall_start, td_wall_last;
 
+/* CPU time used during the timedemo (the whole process: our threads and
+ * RetroArch's; and the main thread alone), for runs paced by audio_sync,
+ * where the wall time per frame is the refresh rate whatever the load */
+#if defined(__linux__)
+#include <sys/resource.h>
+#define TD_CPU 1
+static double td_cpu_proc, td_cpu_main;
+
+static void CL_TimeDemoCpu(double *proc, double *main_thread)
+{
+   struct rusage ru;
+   getrusage(RUSAGE_SELF, &ru);
+   *proc = ru.ru_utime.tv_sec * 1000.0 + ru.ru_utime.tv_usec / 1000.0 +
+           ru.ru_stime.tv_sec * 1000.0 + ru.ru_stime.tv_usec / 1000.0;
+   getrusage(RUSAGE_THREAD, &ru);
+   *main_thread = ru.ru_utime.tv_sec * 1000.0 + ru.ru_utime.tv_usec / 1000.0 +
+           ru.ru_stime.tv_sec * 1000.0 + ru.ru_stime.tv_usec / 1000.0;
+}
+#endif
+
 static void CL_TimeDemoWallFrame(void)
 {
    double now = perf_timing_now_usec();
@@ -72,6 +93,9 @@ static void CL_TimeDemoWallFrame(void)
    {
       td_wall_start = td_wall_last = now;
       td_wall_frames = 0;
+#ifdef TD_CPU
+      CL_TimeDemoCpu(&td_cpu_proc, &td_cpu_main);
+#endif
       return;
    }
    if (host_framecount <= cls.td_startframe + 1)
@@ -352,6 +376,18 @@ static void CL_FinishTimeDemo(void)
 		   wall * 1000.0 / td_wall_frames, td_frame_ms[n / 2],
 		   td_frame_ms[n * 9 / 10], td_frame_ms[n * 99 / 100],
 		   td_frame_ms[n - 1]);
+#ifdef TD_CPU
+	{
+	    double proc, main_thread;
+	    CL_TimeDemoCpu(&proc, &main_thread);
+	    Con_Printf("timedemo cpu: process %.2f ms/frame (%.0f %% of a core), "
+		       "main thread %.2f ms/frame, other threads %.2f\n",
+		       (proc - td_cpu_proc) / td_wall_frames,
+		       (proc - td_cpu_proc) / (wall * 10.0),
+		       (main_thread - td_cpu_main) / td_wall_frames,
+		       (proc - td_cpu_proc - (main_thread - td_cpu_main)) / td_wall_frames);
+	}
+#endif
     }
     td_wall_frames = 0;
 
