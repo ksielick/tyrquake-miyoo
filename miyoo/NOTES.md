@@ -210,7 +210,12 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
   fc33ab4d = commit fc14e41, .port as content, `cores/core_info.cache` deleted, shortcut replaced by
   `miyoo/card/1996 Quake.port`, previous one in workspace `backup/20261019-gameswitcher/`; then
   by md5 1cec45bf = commit 3f56ebe: resume without console flash, palette on both threads, Q_rand,
-  dither fix; the shortcut on the card is still the one without the core_info.cache refresh) and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
+  dither fix; then by md5 a1637818 = commit 47f32a5: alias models on both threads, music thread,
+  59.67 fps option, with a test setup: TyrQuake.opt framerate 40 → "59.67" and a new core override
+  `config/TyrQuake/TyrQuake.cfg` (video_vsync true, audio_sync false, video_refresh_rate 59.67;
+  applies to the stock core too); the old TyrQuake.opt is in workspace `backup/20261019-hz/`, revert
+  = restore it and delete TyrQuake.cfg; the shortcut on the card is still the one without the
+  core_info.cache refresh) and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
   `tyrquake_libretro.so` is untouched.
 - `Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port`: `Core="tyrquake_miyoo"`
   (was `tyrquake`; original in the workspace `backup/20261019-before-install/`). Revert = that line.
