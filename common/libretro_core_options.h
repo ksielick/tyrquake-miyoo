@@ -166,6 +166,17 @@ struct retro_core_option_definition option_defs_us[] = {
 #endif
    },
    {
+      "tyrquake_frame_steps",
+      "Slow Frames",
+      "'Real time': a frame that takes longer than the framerate allows moves the game and the sound on by the time that really passed (up to 50 ms), so the game keeps its speed and the sound doesn't crackle for lack of samples. 'Fixed': always one framerate step; slow frames slow the game down and can starve the sound. Timedemos always use fixed steps.",
+      {
+         { "realtime", "Real time" },
+         { "fixed",    "Fixed" },
+         { NULL, NULL },
+      },
+      "realtime"
+   },
+   {
       "tyrquake_sound_samplerate",
       "Sound Samplerate (Hint)",
       "Audio output rate. Quake mixes its sound at the chosen output rate. 'Auto' matches the frontend's target rate, which avoids the frontend resampler's extra filtering and group delay -- that rate-matching, not a higher number, is what helps latency. Higher fixed rates give the music-stream resampler finer time resolution and reduce aliasing fold-back, but do little for Quake's own sound effects, which are low-rate and nearest-neighbour resampled (their artifacts sit at fixed low frequencies regardless of output rate). Falls back to the framerate-appropriate rate when the frontend can't report one. Takes effect on restart.",

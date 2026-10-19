@@ -305,6 +305,38 @@ gp_layout_t *gp_layoutp = NULL;
 static float framerate      = 60.0f;
 static float frametime_usec = 1000.0f / 60.0f;
 
+/* Option "Slow Frames": with real-time steps a frame that took longer
+ * than 1/framerate moves the game and the sound on by the time that
+ * passed (up to 50 ms), else the sound gets fewer samples than the
+ * frontend plays and runs dry (clicks; on the Miyoo whenever a heavy
+ * scene drops below 60 fps).  Never less than 1/framerate: with
+ * audio_sync the frontend's waits on the sound pace the fast frames.
+ * The time spent handing the sound over (blocked while the frontend's
+ * buffer is full) doesn't count: else a frame that waited would step
+ * further, make more sound, wait longer, and the game would settle at
+ * ~30 fps.  Timedemos keep fixed steps, so they replay the same frames. */
+static bool realtime_steps = true;
+static double frame_step = 1.0 / 60.0;	/* seconds, this frame */
+static double audio_push_usec;		/* in audio_batch_cb since last frame */
+unsigned long long audio_frames_pushed;	/* to the frontend (timedemo report) */
+
+static double next_frame_step(void)
+{
+   static double last_usec;
+   double step = 1.0 / framerate;
+   double now = perf_timing_now_usec();
+
+   if (realtime_steps && (!cls.timedemo || timedemo_realsteps.value) && now > 0.0 && last_usec > 0.0)
+   {
+      double busy = (now - last_usec - audio_push_usec) / 1000000.0;
+      if (busy > step)
+         step = busy < 0.05 ? busy : 0.05;
+   }
+   last_usec = now;
+   audio_push_usec = 0.0;
+   return step;
+}
+
 static bool initial_resolution_set = false;
 static bool has_set_username       = false;
 static int invert_y_axis = 1;
@@ -1020,6 +1052,11 @@ static void update_variables(bool startup)
       update_audio_samplerate();
    }
 
+   var.key = "tyrquake_frame_steps";
+   var.value = NULL;
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+      realtime_steps = strcmp(var.value, "fixed") != 0;
+
    var.key = "tyrquake_resolution";
    var.value = NULL;
 
@@ -1207,13 +1244,14 @@ void retro_run(void)
    /* RetroArch hands over its auto-loaded state (Onion's Game Switcher)
     * after the first frame: Quake waits a few black frames for it, rather
     * than showing its start-up console and demo before the state */
+   frame_step = next_frame_step();
    run_frames++;
    if (state_load_pending)
       state_load();
    if (run_frames > STATE_WAIT_FRAMES || sv.active)
    {
       perf_timing_section_begin(PERF_SECTION_RENDERVIEW);
-      Host_Frame(1.0 / framerate);
+      Host_Frame(frame_step);
       perf_timing_section_end(PERF_SECTION_RENDERVIEW);
    }
 
@@ -2195,9 +2233,11 @@ void D_EndDirectRect(int x, int y, int w, int h)
 static size_t audio_batch_timed(const int16_t *data, size_t frames)
 {
    size_t n;
+   double t0 = perf_timing_now_usec();
    perf_timing_section_begin(PERF_SECTION_AUDIO_CB);
    n = audio_batch_cb(data, frames);
    perf_timing_section_end(PERF_SECTION_AUDIO_CB);
+   audio_push_usec += perf_timing_now_usec() - t0;
    return n;
 }
 
@@ -2237,16 +2277,21 @@ static void audio_step(void)
       return;
    push_audio = (av_flags & RETRO_AV_ENABLE_AUDIO) != 0;
 
-   /* This frame's share of the samples.  At a fractional framerate
-    * (59.67) frames alternate between n and n + 1 so that the average
-    * is exact; at whole ones it is the same count every frame. */
+   /* This frame's share of the samples: the frame's time step (see
+    * next_frame_step).  At a fractional framerate (59.67) frames
+    * alternate between n and n + 1 so that the average is exact; at
+    * whole ones with fixed steps it is the same count every frame. */
    if (shm)
    {
       static double audio_frame_acc;
+      int n;
 
-      audio_frame_acc += audio_samplerate;
-      shm->samples_per_frame = (int)(audio_frame_acc / framerate);
-      audio_frame_acc -= shm->samples_per_frame * (double)framerate;
+      audio_frame_acc += audio_samplerate * frame_step;
+      n = (int)(audio_frame_acc + 1e-6);
+      if (n > AUDIO_BUFFER_SIZE / 2)
+         n = AUDIO_BUFFER_SIZE / 2;
+      shm->samples_per_frame = n;
+      audio_frame_acc -= n;
    }
 
    /* Mix.  S_Update does the spatialization /
@@ -2303,6 +2348,7 @@ static void audio_step(void)
             audio_batch_frames_max = audio_frames_written;
 
          audio_frames_remaining -= audio_frames_written;
+         audio_frames_pushed    += audio_frames_written;
          audio_out_ptr_f        += audio_frames_written << 1;
       }
       while (audio_frames_remaining > 0);
@@ -2325,6 +2371,7 @@ static void audio_step(void)
          audio_batch_frames_max = audio_frames_written;
 
       audio_frames_remaining -= audio_frames_written;
+      audio_frames_pushed    += audio_frames_written;
       audio_out_ptr          += audio_frames_written << 1;
    }
    while (audio_frames_remaining > 0);

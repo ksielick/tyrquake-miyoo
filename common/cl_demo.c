@@ -59,6 +59,12 @@ cvar_t timedemo_quit = { "timedemo_quit", "0" };
  * (miyoo/tools/shots.sh).  Not for timing runs: saving costs time. */
 cvar_t timedemo_shots = { "timedemo_shots", "0" };
 cvar_t timedemo_shotdir = { "timedemo_shotdir", "/tmp/tqshots" };
+/* timedemo_realsteps 1: the timedemo uses "Slow Frames: real time" steps
+ * like play (for audio tests; the frames then differ from run to run) */
+cvar_t timedemo_realsteps = { "timedemo_realsteps", "0" };
+/* stereo frames handed to the frontend (libretro.c), for the audio rate */
+extern unsigned long long audio_frames_pushed;
+static unsigned long long td_audio_frames300;
 int td_shot_frame = -1;
 #define TD_MAX_FRAMES 16384
 static float td_frame_ms[TD_MAX_FRAMES];
@@ -103,6 +109,8 @@ static void CL_TimeDemoWallFrame(void)
    if (td_wall_frames < TD_MAX_FRAMES)
       td_frame_ms[td_wall_frames] = (float)((now - td_wall_last) / 1000.0);
    td_wall_frames++;
+   if (td_wall_frames == 300)
+      td_audio_frames300 = audio_frames_pushed;
    td_wall_last = now;
    if (timedemo_shots.value >= 1 && td_wall_frames % (int)timedemo_shots.value == 0)
       td_shot_frame = td_wall_frames;
@@ -385,8 +393,9 @@ static void CL_FinishTimeDemo(void)
 	    int i;
 	    for (i = 300; i < n; i++)
 		ms += td_frame_ms[i];
-	    Con_Printf("timedemo steady: frames 300-%i %.3f fps\n", n - 1,
-		       (n - 300) * 1000.0 / ms);
+	    Con_Printf("timedemo steady: frames 300-%i %.3f fps, sound %.0f samples/s\n", n - 1,
+		       (n - 300) * 1000.0 / ms,
+		       (audio_frames_pushed - td_audio_frames300) * 1000.0 / ms);
 	}
 	qsort(td_frame_ms, n, sizeof(td_frame_ms[0]), CL_CompareFloat);
 	Con_Printf("timedemo wall: %i frames %.3f s %.2f fps, frame ms "

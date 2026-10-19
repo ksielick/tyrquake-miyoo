@@ -442,8 +442,21 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   audio_sync on every combination paces in bursts (vsync, audio_latency 64/96, sinc): steady
   58.95-59.35 fps, 86-121 of 1090 frames over 20 ms — the same as Onion's setup.
 - Music ring dry only 1-2 frames per demo (track start): not the clicks.
-- Card test now: audio_sync true, audio_resampler sinc, video_refresh_rate 59.67, no vsync
-  (does nearest + rate control click?).
+- Card test: audio_sync true, audio_resampler sinc, video_refresh_rate 59.67, no vsync: the
+  owner still heard clicks whenever the game dropped below 60 fps; at 40 fps never.
+
+## Slow frames: real-time steps (2026-10-19)
+- Cause of the clicks: the core always stepped 1/framerate and mixed that much sound; in heavy
+  scenes at 60 fps the frames take longer, so it handed over less sound than audioserver plays:
+  timedemo (fixed steps, audio_sync, 59.67) frames 300-end 47 679-47 710 samples/s vs ~47 920
+  played → the buffer runs dry → clicks. At 40 fps (25 ms budget, ~13 ms work) never.
+- Core option "Slow Frames" (tyrquake_frame_steps, default realtime): a frame whose own work
+  took longer than 1/framerate steps the game and the sound by that time (max 50 ms). The time
+  blocked in audio_batch_cb is left out: counting it, waits made longer steps, more sound,
+  longer waits, and the game settled at 30-36 fps (seen). Timedemos keep fixed steps unless
+  `timedemo_realsteps 1`; the report prints the sound rate from frame 300 on.
+- realsteps 1, 59.67, audio_sync: demo1 47 992, demo3 47 966 samples/s (enough), 58.8-58.9 fps
+  (the same game time in fewer, longer steps); pacing as bursty as Onion's (audio_sync).
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
