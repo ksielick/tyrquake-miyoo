@@ -459,6 +459,21 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
 - realsteps 1, 59.67, audio_sync: demo1 47 992, demo3 47 966 samples/s (enough), 58.8-58.9 fps
   (the same game time in fewer, longer steps); pacing as bursty as Onion's (audio_sync).
 
+## Compiler: -O3 and PGO (2026-10-19)
+- build_core.sh: extra CFLAGS after the out dir (`build_core.sh <out> -O3`), `LDEXTRA` link
+  flags; `xargs -r` (with nothing to compile it ran the compiler once without arguments).
+- `miyoo/tools/pgo.sh`: instrumented build (-O3 -fprofile-generate -fprofile-update=atomic;
+  ~2.7x slower), demo1-3 on the device with bench `PGO=1` (GCOV_PREFIX=/tmp/pgo; the .gcda
+  paths are the Windows object paths), .gcda copied next to the objects, rebuilt with
+  -fprofile-use -fprofile-correction. Rerun after code changes (the profile is per source).
+- A/B 640x480, two rounds (avg / p90 / main thread CPU ms):
+  O2 demo1 13.29-13.40 / 16.35-16.43 / 12.85-12.90, demo3 13.81-13.93 / 16.73-16.94 / 13.12-13.22;
+  O3 demo1 13.13-13.23 / 15.86-15.97 / 12.66, demo3 13.50-13.61 / 16.09-16.18 / 13.11-13.22;
+  PGO demo1 12.91-12.96 / 15.63-15.76 / 12.40-12.54, demo3 13.28-13.60 / 15.93-16.60 / 12.71-12.82.
+  PGO ~3 % (trained on the same demos), O3 ~1.5 %. Shots: O3 = O2, PGO = reference (59/59).
+- shots.sh pins FPS=40 (the reference set's framerate; the owner's option is now 59.67, which
+  moves e.g. when notify lines vanish — 34 shots differed in the top-left text only).
+
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +

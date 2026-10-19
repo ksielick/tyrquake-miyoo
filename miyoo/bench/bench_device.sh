@@ -53,6 +53,7 @@ fi
 # PERF=1: r_perf logs core time per frame each second (wall minus core = RetroArch's share)
 # SYNC=1: audio_sync on as in play (paced by the sound, ~60 fps): compare "timedemo cpu"
 # VSYNC=1: video_vsync on; REFRESH=59.67: RetroArch's video_refresh_rate (Onion: 60); LAT=128: audio_latency (Onion: 64); RC=0: no audio rate control; RESAMPLER=sinc/cc/nearest
+# PGO=1: a -fprofile-generate core writes its profile under /tmp/pgo (see NOTES, PGO)
 # CFG: extra console commands, ';'-separated (e.g. CFG="r_threads 0")
 # LOAD=s0: load that savegame (copies of the player's saves) instead of a timedemo; use max_frames
 if [ -n "$LOAD" ]; then
@@ -116,7 +117,7 @@ touch $T/started
 echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 cd $RA
 T0=\$(cut -d' ' -f1 /proc/uptime)
-HOME=$RA LD_PRELOAD=/mnt/SDCARD/miyoo/lib/libpadsp.so ./retroarch -v -c $T/retroarch.cfg \\
+${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }HOME=$RA LD_PRELOAD=/mnt/SDCARD/miyoo/lib/libpadsp.so ./retroarch -v -c $T/retroarch.cfg \\
 	--appendconfig $T/override.cfg ${MAXF:+--max-frames=$MAXF} -L $T/tyrquake_miyoo_libretro.so \\
 	"$CONTENT" > $T/log.txt 2>&1 &
 P=\$!

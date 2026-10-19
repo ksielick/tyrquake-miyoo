@@ -4,6 +4,7 @@
 #   miyoo/build/build_core.sh [out_dir] [extra CFLAGS...]
 # Default out_dir: <workspace>/build/core. Objects go to <out_dir>/obj.
 # Only .c timestamps are checked: after a header change run with FORCE=1.
+# LDEXTRA: extra link flags (-fprofile-generate=... for a PGO profiling build, see NOTES).
 set -e
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 WS=$(cd "$REPO/../.." && pwd)
@@ -64,9 +65,9 @@ for s in $SRCS; do
 	if [ ! -f "$o" ] || [ "$s" -nt "$o" ] || [ -n "$FORCE" ]; then
 		echo "$s $o${x:+ $x}"
 	fi
-done | xargs -P "$JOBS" -L 1 sh -c 'echo "  CC $0"; "$CC" @"$RSP" $2 $3 $4 $5 $6 -c "$0" -o "$1"'
+done | xargs -r -P "$JOBS" -L 1 sh -c 'echo "  CC $0"; "$CC" @"$RSP" $2 $3 $4 $5 $6 -c "$0" -o "$1"'
 
-"$CC" -shared -Wl,--version-script=common/libretro-link.T -Wl,--no-undefined -Wl,--wrap=stat -static-libgcc \
+"$CC" -shared -Wl,--version-script=common/libretro-link.T -Wl,--no-undefined -Wl,--wrap=stat -static-libgcc $LDEXTRA \
 	-o "$OUT/tyrquake_libretro.so" "$OUT"/obj/*.o -lm
 cp "$OUT/tyrquake_libretro.so" "$OUT/tyrquake_libretro.unstripped.so"
 "$TC/arm-none-linux-gnueabihf-strip" "$OUT/tyrquake_libretro.so"

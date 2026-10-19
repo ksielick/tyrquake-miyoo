@@ -7,6 +7,8 @@
 # Compare two sets: py -3 miyoo/tools/shots_compare.py <ref dir> <new dir>   (not py -I: numpy
 # is in the user's site-packages)
 # The shots cost time: these runs are not timings. Ask the owner before running.
+# FPS (default 40, as when the reference set was made): the core framerate; the game time step
+# per frame decides what the frames show (e.g. when console notify lines disappear).
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
@@ -22,7 +24,7 @@ DEST=$WS/build/shots/td/$NAME
 
 rm -rf "$DEST"
 for d in $DEMOS; do
-	CFG="${CFG:+$CFG;}timedemo_shots $EVERY" sh "$HERE/bench.sh" "$CORE" 640x480 $d |
+	FPS=${FPS:-40} CFG="${CFG:+$CFG;}timedemo_shots $EVERY" sh "$HERE/bench.sh" "$CORE" 640x480 $d |
 		grep -E "^core|timedemo wall|^exit|no result" || true
 	# (mssh's exit code is its output filter's: 1 when the command prints nothing)
 	"$MSSH" "cd /tmp && tar cf /mnt/SDCARD/Roms/.tqshots.tar tqshots && rm -rf /tmp/tqshots" || true
