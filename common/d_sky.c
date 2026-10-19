@@ -22,11 +22,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "d_local.h"
+#include "d_mt.h"
 
 #define SKY_SPAN_SHIFT	5
 #define SKY_SPAN_MAX	(1 << SKY_SPAN_SHIFT)
 
-static float   timespeed1, timespeed2; /* Manoel Kasimier - smooth sky */
+static D_TLS float timespeed1, timespeed2; /* Manoel Kasimier - smooth sky */
 
 byte *skyunderlay;
 byte *skyoverlay;
@@ -80,6 +81,8 @@ void D_DrawSkyScans8 (espan_t *pspan)
    do
    {
       fixed16_t      snext, tnext, s2, t2;
+      if (D_SPAN_OUTSIDE_BAND(pspan))
+         continue;
       uint8_t *pdest = (uint8_t*)((byte *)d_viewbuffer +
             (screenwidth * pspan->v) + pspan->u);
       int count      = pspan->count;

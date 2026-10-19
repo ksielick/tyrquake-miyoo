@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "d_local.h"
+#include "d_mt.h"
 
 #define NUM_MIPS	4
 
@@ -51,6 +52,7 @@ D_Init(void)
     Cvar_RegisterVariable(&d_mipcap);
     Cvar_RegisterVariable(&d_mipscale);
     Cvar_RegisterVariable(&dither_filter);
+    D_MT_RegisterCvars();
 
     r_recursiveaffinetriangles = true;
     r_aliasuvscale = 1.0;

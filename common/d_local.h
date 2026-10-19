@@ -62,12 +62,12 @@ extern float scale_for_mip;
 extern surfcache_t *sc_rover;
 extern surfcache_t *d_initial_rover;
 
-extern float d_sdivzstepu, d_tdivzstepu, d_zistepu;
-extern float d_sdivzstepv, d_tdivzstepv, d_zistepv;
-extern float d_sdivzorigin, d_tdivzorigin, d_ziorigin;
+extern D_TLS float d_sdivzstepu, d_tdivzstepu, d_zistepu;
+extern D_TLS float d_sdivzstepv, d_tdivzstepv, d_zistepv;
+extern D_TLS float d_sdivzorigin, d_tdivzorigin, d_ziorigin;
 
-extern fixed16_t sadjust, tadjust;
-extern fixed16_t bbextents, bbextentt;
+extern D_TLS fixed16_t sadjust, tadjust;
+extern D_TLS fixed16_t bbextents, bbextentt;
 
 void D_DrawSpans8(espan_t *pspans);
 void D_DrawShadowTriangle(const float v0[2], const float v1[2], const float v2[2], float zi0, float zi1, float zi2);
@@ -86,11 +86,11 @@ void D_SpriteDrawSpans(sspan_t * pspan);
  * the surface texture's liquid type and the user-controlled
  * r_*alpha and r_liquidblend cvars.  See d_scan.c for the
  * meaning of the values. */
-extern int r_turb_alpha;
-extern int r_turb_blendmode;
-extern int r_turb_izi;
-extern int r_turb_izistep;
-extern int r_turb_ztest;
+extern D_TLS int r_turb_alpha;
+extern D_TLS int r_turb_blendmode;
+extern D_TLS int r_turb_izi;
+extern D_TLS int r_turb_izistep;
+extern D_TLS int r_turb_ztest;
 
 void D_DrawSkyScans8(espan_t *pspan);
 void D_DrawSkyScans16(espan_t *pspan);

@@ -1402,9 +1402,24 @@ CalcSurfaceExtents(msurface_t *s)
 	 * comfortably in blocklights[972].  The 16384-extent
 	 * override at Mod_LoadFaces still happens for water
 	 * surfaces, but those are routed away from the
-	 * lightmap path by the texture-name check. */
-	if (s->extents[i] < 0 || s->extents[i] > 256)
-	    SV_Error("Bad surface extents (%d)", s->extents[i]);
+	 * lightmap path by the texture-name check.
+	 *
+	 * So the bound follows the same name check: sky ("sky*") and
+	 * liquid ("*") faces are never lightmapped and legitimately
+	 * exceed 256 in stock id maps.  SV_Error only logs here, so the
+	 * extent is also clamped to keep R_BuildLightMap in bounds.  A
+	 * missing texture (checkerboard, e.g. a missing sky) gets 240 as
+	 * in TyrQuake 0.71. */
+	if (s->extents[i] < 0 || s->extents[i] > 256) {
+	    const char *name = tex->texture->name;
+
+	    if (tex->texture == r_notexture_mip)
+		s->extents[i] = s->extents[i] < 0 ? 0 : 240;
+	    else if (strncmp(name, "sky", 3) && name[0] != '*') {
+		SV_Error("Bad surface extents (%d)", s->extents[i]);
+		s->extents[i] = s->extents[i] < 0 ? 0 : 256;
+	    }
+	}
     }
 }
 

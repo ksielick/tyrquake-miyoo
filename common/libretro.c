@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "libretro.h"
 #include "libretro_core_options.h"
 #include "perf_timing.h"
+#include "d_mt.h"
 #include "rhi.h"
 #include <retro_miscellaneous.h>
 #include <file/file_path.h>
@@ -398,7 +399,20 @@ retro_environment_t environ_cb;
 static retro_input_poll_t poll_cb;
 static retro_input_state_t input_cb;
 
-void Sys_Printf(const char *fmt, ...) { }
+/* Console text goes to the frontend log (RetroArch -v with libretro_log_level 0),
+ * so timedemo and r_perf results can be read without the screen. */
+void Sys_Printf(const char *fmt, ...)
+{
+   char buffer[1024];
+   va_list ap;
+
+   if (!log_cb)
+      return;
+   va_start(ap, fmt);
+   vsnprintf(buffer, sizeof(buffer), fmt, ap);
+   va_end(ap);
+   log_cb(RETRO_LOG_INFO, "%s", buffer);
+}
 void Sys_Quit(void) { Host_Shutdown(); }
 
 void Sys_Init(void)
@@ -462,6 +476,9 @@ void retro_init(void)
 
 void retro_deinit(void)
 {
+   /* the drawing thread must be gone before the core is unloaded */
+   D_MT_Shutdown();
+
    if (!shutdown_core)
    {
       CL_Disconnect();
@@ -547,11 +564,13 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
 void retro_get_system_info(struct retro_system_info *info)
 {
    memset(info, 0, sizeof(*info));
+   /* TyrQuake-Miyoo keeps the library name, so it shares the player's
+    * saves, config.cfg and core options with the stock core */
    info->library_name     = "TyrQuake";
 #ifndef GIT_VERSION
 #define GIT_VERSION ""
 #endif
-   info->library_version  = "v" stringify(TYR_VERSION) GIT_VERSION;
+   info->library_version  = "v" stringify(TYR_VERSION) "-miyoo " GIT_VERSION;
    info->need_fullpath    = true;
    info->valid_extensions = "pak";
 }

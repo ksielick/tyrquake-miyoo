@@ -21,6 +21,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #ifndef R_SHARED_H
 #define R_SHARED_H
 
+
+/* thread-local span drawing state, see d_mt.h */
+#ifndef D_TLS
+#if defined(__GNUC__) && !defined(_WIN32)
+#define D_TLS __thread __attribute__((tls_model("initial-exec")))
+#else
+#define D_TLS
+#endif
+#endif
 /* r_shared.h: general refresh-related stuff shared between the refresh and the */
 /* driver */
 
@@ -44,8 +53,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 /* =================================================================== */
 
-extern int cachewidth;
-extern pixel_t *cacheblock;
+extern D_TLS int cachewidth;
+extern D_TLS int r_turb_texheight;	/* liquid texture height, see D_DrawTurbulent8Span */
+extern D_TLS pixel_t *cacheblock;
 extern int screenwidth;
 
 extern float pixelAspect;
@@ -75,7 +85,7 @@ extern vec3_t vright, base_vright;
 #define	MINEDGES		      NUMSTACKEDGES
 #define MAXSURFACES 0xffff
 #define MAXEDGES (MAXSURFACES << 2)
-#define	MAXSPANS		3000
+#define	MAXSPANS		12000	/* 3000; at 640x480 fewer flushes, fewer thread hand-offs */
 
 /* !!! if this is changed, it must be changed in asm_draw.h too !!! */
 typedef struct espan_s {

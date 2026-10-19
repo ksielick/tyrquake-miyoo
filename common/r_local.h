@@ -165,8 +165,8 @@ extern void R_RotateBmodel(const entity_t *e);
 
 extern int ubasestep, errorterm, erroradjustup, erroradjustdown;
 
-extern fixed16_t sadjust, tadjust;
-extern fixed16_t bbextents, bbextentt;
+extern D_TLS fixed16_t sadjust, tadjust;
+extern D_TLS fixed16_t bbextents, bbextentt;
 
 #define MAXBVERTINDEXES	1000	/* new clipped vertices when clipping bmodels */
 				/* to the world BSP */
@@ -211,6 +211,7 @@ void R_PushDlights (struct mnode_s *headnode); /* qbism - moved from render.h */
 
 extern int r_amodels_drawn;
 extern edge_t *auxedges;
+extern qboolean r_surfaces_overflow, r_edges_overflow;
 extern int r_numallocatededges;
 extern edge_t *r_edges, *edge_p, *edge_max;
 

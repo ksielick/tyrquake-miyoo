@@ -66,6 +66,13 @@ enum {
                                    * formerly end_frame's vkQueueWaitIdle, dropped at 3b) */
    PERF_SECTION_SET_IMAGE,        /* SUBMIT_PRESENT sub: vk_iface->set_image */
    PERF_SECTION_VIDEO_CB,         /* SUBMIT_PRESENT sub: video_cb */
+   /* software renderer breakdown (HOST_RV subsections, printed as "SW") */
+   PERF_SECTION_SW_EDGEDRAW,      /* R_EdgeDrawing: edge lists + scan + surfaces */
+   PERF_SECTION_SW_SCAN,          /* R_ScanEdges incl. its D_DrawSurfaces flushes */
+   PERF_SECTION_SW_DSURF,         /* D_DrawSurfaces: spans + surface caches */
+   PERF_SECTION_SW_CACHE,         /* R_DrawSurface: building lit surface caches */
+   PERF_SECTION_SW_ENTS,          /* R_DrawEntitiesOnList + R_DrawViewModel */
+   PERF_SECTION_SW_VIDUPD,        /* VID_Update: palette pass + video_cb */
    PERF_SECTION_COUNT
 };
 
@@ -100,6 +107,13 @@ void perf_timing_register_cvars(void);
  */
 void perf_timing_section_begin(int section_id);
 void perf_timing_section_end(int section_id);
+
+/*
+ * Frontend wall clock in microseconds, independent of r_perf
+ * (timedemo's real-time report uses it).  Returns 0 when the
+ * frontend has no perf interface.
+ */
+double perf_timing_now_usec(void);
 
 /*
  * Add to a per-frame counter.  Early-outs when r_perf == 0.

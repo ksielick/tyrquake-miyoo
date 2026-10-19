@@ -255,7 +255,7 @@ qboolean R_AliasCheckBBox(entity_t *e)
 {
    int i, flags, frame, numv;
    aliashdr_t *pahdr;
-   float zi, basepts[8][3], v0, v1;
+   float zi, basepts[8][3], v0, v1, mins[3], maxs[3];
    finalvert_t viewpts[16];
    auxvert_t viewaux[16];
    maliasframedesc_t *pframedesc;
@@ -280,24 +280,35 @@ qboolean R_AliasCheckBBox(entity_t *e)
    }
 
    pframedesc = &pahdr->frames[frame];
+   for (i = 0; i < 3; i++) {
+      mins[i] = pframedesc->bboxmin.v[i];
+      maxs[i] = pframedesc->bboxmax.v[i];
+   }
+   /* Lerping between two frames: enclose both, so trivial accept stays
+    * safe (TyrQuake 0.71 R_AliasGetBBox).  Same frame clamp as
+    * R_AliasSetupFrame. */
+   if (r_lerpmodels.value) {
+      int prev = e->previousframe;
+      if (prev >= 0 && prev < pahdr->numframes && prev != frame) {
+         const maliasframedesc_t *pprev = &pahdr->frames[prev];
+         for (i = 0; i < 3; i++) {
+            mins[i] = qmin(mins[i], (float)pprev->bboxmin.v[i]);
+            maxs[i] = qmax(maxs[i], (float)pprev->bboxmax.v[i]);
+         }
+      }
+   }
 
    /* x worldspace coordinates */
-   basepts[0][0] = basepts[1][0] = basepts[2][0] = basepts[3][0] =
-      (float)pframedesc->bboxmin.v[0];
-   basepts[4][0] = basepts[5][0] = basepts[6][0] = basepts[7][0] =
-      (float)pframedesc->bboxmax.v[0];
+   basepts[0][0] = basepts[1][0] = basepts[2][0] = basepts[3][0] = mins[0];
+   basepts[4][0] = basepts[5][0] = basepts[6][0] = basepts[7][0] = maxs[0];
 
    /* y worldspace coordinates */
-   basepts[0][1] = basepts[3][1] = basepts[5][1] = basepts[6][1] =
-      (float)pframedesc->bboxmin.v[1];
-   basepts[1][1] = basepts[2][1] = basepts[4][1] = basepts[7][1] =
-      (float)pframedesc->bboxmax.v[1];
+   basepts[0][1] = basepts[3][1] = basepts[5][1] = basepts[6][1] = mins[1];
+   basepts[1][1] = basepts[2][1] = basepts[4][1] = basepts[7][1] = maxs[1];
 
    /* z worldspace coordinates */
-   basepts[0][2] = basepts[1][2] = basepts[4][2] = basepts[5][2] =
-      (float)pframedesc->bboxmin.v[2];
-   basepts[2][2] = basepts[3][2] = basepts[6][2] = basepts[7][2] =
-      (float)pframedesc->bboxmax.v[2];
+   basepts[0][2] = basepts[1][2] = basepts[4][2] = basepts[5][2] = mins[2];
+   basepts[2][2] = basepts[3][2] = basepts[6][2] = basepts[7][2] = maxs[2];
 
    zclipped = false;
    zfullyclipped = true;
@@ -387,13 +398,7 @@ qboolean R_AliasCheckBBox(entity_t *e)
    if (allclip)
       return false;		/* trivial reject off one side */
 
-   /*
-    * FIXME - Trivial accept not safe while lerping unless we check
-    *         the bbox of both src and dst frames
-    */
-   if (r_lerpmodels.value)
-      return true;
-
+   /* trivial accept is safe while lerping: the bbox above covers both frames */
    e->trivial_accept = !anyclip & !zclipped;
    if (e->trivial_accept) {
       if (minz > (r_aliastransition + (pahdr->size * r_resfudge))) {

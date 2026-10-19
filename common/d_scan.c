@@ -43,11 +43,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "d_local.h"
+#include "d_mt.h"
 
-unsigned char *r_turb_pbase, *r_turb_pdest;
-fixed16_t r_turb_s, r_turb_t, r_turb_sstep, r_turb_tstep;
-int *r_turb_turb;
-int r_turb_spancount;
+/* turbulent span state: per thread (d_mt.h) */
+D_TLS unsigned char *r_turb_pbase, *r_turb_pdest;
+D_TLS fixed16_t r_turb_s, r_turb_t, r_turb_sstep, r_turb_tstep;
+D_TLS int *r_turb_turb;
+D_TLS int r_turb_spancount;
 
 /* Liquid blending state, set per-surface by the caller before
  * Turbulent8() runs.  r_turb_alpha is the desired opacity 0..255
@@ -59,10 +61,10 @@ int r_turb_spancount;
  * r_turb_screen_x/y track the screen position of r_turb_pdest so
  * the stipple pattern indexes by screen-pixel rather than
  * texture-pixel coordinates. */
-int r_turb_alpha     = 255;
-int r_turb_blendmode = 0;
-int r_turb_screen_x;
-int r_turb_screen_y;
+D_TLS int r_turb_alpha     = 255;
+D_TLS int r_turb_blendmode = 0;
+D_TLS int r_turb_screen_x;
+D_TLS int r_turb_screen_y;
 
 /* Z-test state for pass-2 (translucent liquid) rasterization.
  * In single-pass mode this is unused -- the edge rasterizer's
@@ -80,11 +82,58 @@ int r_turb_screen_y;
  *                 D_DrawTurbulent8Span gates its z-comparison
  *                 on this so the opaque single-pass path stays
  *                 byte-identical to vanilla. */
-int r_turb_izi;
-int r_turb_izistep;
-int r_turb_ztest = 0;
+D_TLS int r_turb_izi;
+D_TLS int r_turb_izistep;
+D_TLS int r_turb_ztest = 0;
 
 void D_DrawTurbulent8Span(void);
+
+/* The span drawing state is thread-local (d_mt.h): every access costs a
+ * thread-pointer read, and byte stores through pdest force the compiler
+ * to reload globals in the pixel loops.  The span functions copy what
+ * they read into same-named locals (D_LOCAL), and turbulence keeps its
+ * running state in locals written back at the end (D_MUTABLE). */
+#define D_ACCESSORS(type, name) \
+   static inline type get_##name(void) { return name; } \
+   static inline void set_##name(type v) { name = v; }
+D_ACCESSORS(float, d_sdivzstepu)
+D_ACCESSORS(float, d_tdivzstepu)
+D_ACCESSORS(float, d_zistepu)
+D_ACCESSORS(float, d_sdivzstepv)
+D_ACCESSORS(float, d_tdivzstepv)
+D_ACCESSORS(float, d_zistepv)
+D_ACCESSORS(float, d_sdivzorigin)
+D_ACCESSORS(float, d_tdivzorigin)
+D_ACCESSORS(float, d_ziorigin)
+D_ACCESSORS(fixed16_t, sadjust)
+D_ACCESSORS(fixed16_t, tadjust)
+D_ACCESSORS(fixed16_t, bbextents)
+D_ACCESSORS(fixed16_t, bbextentt)
+D_ACCESSORS(int, cachewidth)
+D_ACCESSORS(int *, r_turb_turb)
+D_ACCESSORS(unsigned char *, r_turb_pbase)
+D_ACCESSORS(unsigned char *, r_turb_pdest)
+D_ACCESSORS(fixed16_t, r_turb_s)
+D_ACCESSORS(fixed16_t, r_turb_t)
+D_ACCESSORS(fixed16_t, r_turb_sstep)
+D_ACCESSORS(fixed16_t, r_turb_tstep)
+D_ACCESSORS(int, r_turb_spancount)
+D_ACCESSORS(int, r_turb_blendmode)
+D_ACCESSORS(int, r_turb_ztest)
+D_ACCESSORS(int, r_turb_screen_x)
+D_ACCESSORS(int, r_turb_screen_y)
+D_ACCESSORS(int, r_turb_izi)
+D_ACCESSORS(int, r_turb_izistep)
+#define D_LOCAL(type, name) type const name = get_##name()
+#define D_MUTABLE(type, name) type name = get_##name()
+
+#define D_SPAN_STATE_LOCALS \
+   D_LOCAL(float, d_sdivzstepu); D_LOCAL(float, d_tdivzstepu); D_LOCAL(float, d_zistepu); \
+   D_LOCAL(float, d_sdivzstepv); D_LOCAL(float, d_tdivzstepv); D_LOCAL(float, d_zistepv); \
+   D_LOCAL(float, d_sdivzorigin); D_LOCAL(float, d_tdivzorigin); D_LOCAL(float, d_ziorigin); \
+   D_LOCAL(fixed16_t, sadjust); D_LOCAL(fixed16_t, tadjust); \
+   D_LOCAL(fixed16_t, bbextents); D_LOCAL(fixed16_t, bbextentt); \
+   D_LOCAL(int, cachewidth)
 
 /*
 =============
@@ -191,19 +240,80 @@ When r_turb_alpha >= 255 the loop falls through to a write on
 every pixel, identical to the original opaque path.
 =============
 */
+/* 4x4 Bayer dither matrix scaled to 0..255.  A pixel at screen
+ * cell (cx, cy) is drawn iff bayer[cy & 3][cx & 3] < alpha,
+ * giving 16 evenly-spaced dither thresholds per 4x4 block. */
+static const int bayer4[4][4] = {
+   {   0, 128,  32, 160 },
+   { 192,  64, 224,  96 },
+   {  48, 176,  16, 144 },
+   { 240, 112, 208,  80 }
+};
+
+/* Height of the current liquid texture (cachewidth is its width). */
+D_TLS int r_turb_texheight = TURB_TEX_SIZE;
+
+/*
+=============
+D_DrawTurbulent8Span_NonStd
+
+Slow path for liquid textures that aren't 64x64 (custom maps), from
+TyrQuake 0.71: wraps with modulo instead of the 64 mask, which garbled
+128x128 liquids and read past 32x32 ones.  Covers the opaque, z-tested
+and stipple cases of D_DrawTurbulent8Span in one loop.
+=============
+*/
+static void
+D_DrawTurbulent8Span_NonStd(int alpha)
+{
+   const unsigned w   = cachewidth;
+   const unsigned h   = r_turb_texheight;
+   const int stipple  = alpha < 255 && r_turb_blendmode == 1;
+   const int ztest    = stipple || r_turb_ztest;
+   const int *drow    = bayer4[r_turb_screen_y & 3];
+   int cx             = r_turb_screen_x;
+   short *pzbuf       = ztest ? d_pzbuffer + (d_zwidth * r_turb_screen_y) + cx : NULL;
+   int izi            = r_turb_izi;
+
+   do
+   {
+      unsigned sturb = r_turb_s + r_turb_turb[(r_turb_t >> 16) & (TURB_CYCLE - 1)];
+      unsigned tturb = r_turb_t + r_turb_turb[(r_turb_s >> 16) & (TURB_CYCLE - 1)];
+      sturb = (sturb >> 16) % w;
+      tturb = (tturb >> 16) % h;
+      if ((!stipple || drow[cx & 3] < alpha) &&
+          (!ztest || (short)(izi >> 16) >= *pzbuf))
+         *r_turb_pdest = *(r_turb_pbase + (tturb * w) + sturb);
+      r_turb_pdest++;
+      if (ztest) {
+         pzbuf++;
+         izi += r_turb_izistep;
+      }
+      cx++;
+      r_turb_s += r_turb_sstep;
+      r_turb_t += r_turb_tstep;
+   } while (--r_turb_spancount > 0);
+   if (stipple)
+      r_turb_screen_x = cx;
+}
+
 void
 D_DrawTurbulent8Span(void)
 {
-   /* 4x4 Bayer dither matrix scaled to 0..255.  A pixel at screen
-    * cell (cx, cy) is drawn iff bayer[cy & 3][cx & 3] < alpha,
-    * giving 16 evenly-spaced dither thresholds per 4x4 block. */
-   static const int bayer4[4][4] = {
-      {   0, 128,  32, 160 },
-      { 192,  64, 224,  96 },
-      {  48, 176,  16, 144 },
-      { 240, 112, 208,  80 }
-   };
    const int alpha = r_turb_alpha;
+
+   if (cachewidth != TURB_TEX_SIZE || r_turb_texheight != TURB_TEX_SIZE) {
+      D_DrawTurbulent8Span_NonStd(alpha);
+      return;
+   }
+   {
+   D_LOCAL(int *, r_turb_turb); D_LOCAL(unsigned char *, r_turb_pbase);
+   D_LOCAL(fixed16_t, r_turb_sstep); D_LOCAL(fixed16_t, r_turb_tstep);
+   D_LOCAL(int, r_turb_blendmode); D_LOCAL(int, r_turb_ztest);
+   D_LOCAL(int, r_turb_screen_y); D_LOCAL(int, r_turb_izi); D_LOCAL(int, r_turb_izistep);
+   D_MUTABLE(unsigned char *, r_turb_pdest); D_MUTABLE(fixed16_t, r_turb_s);
+   D_MUTABLE(fixed16_t, r_turb_t); D_MUTABLE(int, r_turb_spancount);
+   D_MUTABLE(int, r_turb_screen_x);
 
    if (alpha >= 255 || r_turb_blendmode != 1) {
       if (!r_turb_ztest) {
@@ -291,6 +401,12 @@ D_DrawTurbulent8Span(void)
       } while (--r_turb_spancount > 0);
       r_turb_screen_x = cx;
    }
+   set_r_turb_pdest(r_turb_pdest);
+   set_r_turb_s(r_turb_s);
+   set_r_turb_t(r_turb_t);
+   set_r_turb_spancount(r_turb_spancount);
+   set_r_turb_screen_x(r_turb_screen_x);
+   }
 }
 
 /*
@@ -301,6 +417,7 @@ Turbulent8
 void
 Turbulent8(espan_t *pspan)
 {
+   D_SPAN_STATE_LOCALS;
    fixed16_t snext, tnext;
    float sdivz16stepu, tdivz16stepu, zi16stepu;
 
@@ -317,6 +434,8 @@ Turbulent8(espan_t *pspan)
 
    do
    {
+      if (D_SPAN_OUTSIDE_BAND(pspan))
+         continue;
       /* calculate the initial s/z, t/z, 1/z, s, and t and clamp */
       int count = pspan->count;
       float  du = (float)pspan->u;
@@ -508,6 +627,7 @@ extern surfcache_t		*pcurrentcache;
 
 void D_DrawSpans16Qb(espan_t *pspan) /* qb: up it from 8 to 16.  This + unroll = big speed gain! */
 {
+   D_SPAN_STATE_LOCALS;
    int count, spancount;
    byte *pbase, *pdest;
    fixed16_t s, t, snext, tnext, sstep, tstep;
@@ -524,6 +644,8 @@ void D_DrawSpans16Qb(espan_t *pspan) /* qb: up it from 8 to 16.  This + unroll =
 
    do
    {
+      if (D_SPAN_OUTSIDE_BAND(pspan))
+         continue;
       pdest = (byte *)((byte *)d_viewbuffer + (screenwidth * pspan->v) + pspan->u);
       count = pspan->count >> 4;
 
@@ -651,6 +773,7 @@ void D_DrawSpans16Qb(espan_t *pspan) /* qb: up it from 8 to 16.  This + unroll =
 
 void D_DrawSpans16QbDither (espan_t *pspan) /* qbism up it from 8 to 16. This + unroll = big speed gain! */
 {
+   D_SPAN_STATE_LOCALS;
    int spancount;
    uint8_t *pbase;
    fixed16_t snext, tnext, sstep, tstep;
@@ -673,6 +796,8 @@ void D_DrawSpans16QbDither (espan_t *pspan) /* qbism up it from 8 to 16. This + 
 
    do
    {
+      if (D_SPAN_OUTSIDE_BAND(pspan))
+         continue;
       fixed16_t t;
       int count = pspan->count;
       /* calculate the initial s/z, t/z, 1/z, s, and t and clamp */
@@ -1101,12 +1226,15 @@ on synthetic 1080p-style span mixes (avg 160 px).
 void
 D_DrawZSpans(espan_t *pspan)
 {
+   D_SPAN_STATE_LOCALS;
    /* FIXME: check for clamping/range problems */
    /* we count on FP exceptions being turned off to avoid range problems */
    int izistep = (int)(d_zistepu * 0x8000 * 0x10000);
 
    do
    {
+      if (D_SPAN_OUTSIDE_BAND(pspan))
+         continue;
       int16_t *pdest = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
       int count = pspan->count;
 

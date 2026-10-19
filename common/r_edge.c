@@ -19,6 +19,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 /* r_edge.c */
 
+#include "perf_timing.h"
+#include "d_mt.h"
 #include <stdint.h>
 
 #include "quakedef.h"
@@ -576,6 +578,8 @@ void R_ScanEdges(void)
    max_span_p = &basespan_p[MAXSPANS - r_refdef.vrect.width];
 
    span_p = basespan_p;
+   D_MT_FrameStart();
+   d_flush_v0 = r_refdef.vrect.y;
 
    /* clear active edges to just the background edges around the whole screen */
    /* FIXME: most of this only needs to be set up once */
@@ -628,7 +632,11 @@ void R_ScanEdges(void)
       /* FIXME - which is correct QW had >, NQ had >= (and QF has >) */
       if (span_p > max_span_p)
       {
+         d_flush_v1 = iv + 1;
+         perf_timing_section_begin(PERF_SECTION_SW_DSURF);
          D_DrawSurfaces();
+         perf_timing_section_end(PERF_SECTION_SW_DSURF);
+         d_flush_v0 = iv + 1;
 
          /* clear the surface span pointers */
          for (s = &surfaces[1]; s < surface_p; s++)
@@ -658,5 +666,8 @@ void R_ScanEdges(void)
    (*pdrawfunc) ();
 
    /* draw whatever's left in the span list */
+   d_flush_v1 = iv + 1;
+   perf_timing_section_begin(PERF_SECTION_SW_DSURF);
    D_DrawSurfaces();
+   perf_timing_section_end(PERF_SECTION_SW_DSURF);
 }

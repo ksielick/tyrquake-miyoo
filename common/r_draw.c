@@ -383,12 +383,17 @@ void R_RenderFace(const entity_t *e, msurface_t *fa, int clipflags)
    if (r_renderpass == 2 && !(fa->flags & SURF_DRAWTURB))
       return;
 
-   /* skip out if no more surfs */
-   if ((surface_p) >= surf_max)
+   /* skip out if no more surfs; R_EdgeDrawing then grows the buffers */
+   /* and redoes the frame's edge list (as TyrQuake 0.71 does) */
+   if ((surface_p) >= surf_max) {
+      r_surfaces_overflow = true;
       return;
-   /* ditto if not enough edges left, or switch to auxedges if possible */
-   if ((edge_p + fa->numedges + 4) >= edge_max)
+   }
+   /* ditto if not enough edges left */
+   if ((edge_p + fa->numedges + 4) >= edge_max) {
+      r_edges_overflow = true;
       return;
+   }
 
    /* set up clip planes */
    pclip = NULL;
@@ -536,12 +541,16 @@ void R_RenderBmodelFace(const entity_t *e, bedge_t *pedges, msurface_t *psurf)
    if (r_renderpass == 2 && !(psurf->flags & SURF_DRAWTURB))
       return;
 
-   /* skip out if no more surfs */
-   if (surface_p >= surf_max)
+   /* skip out if no more surfs (see R_RenderFace) */
+   if (surface_p >= surf_max) {
+      r_surfaces_overflow = true;
       return;
-   /* ditto if not enough edges left, or switch to auxedges if possible */
-   if ((edge_p + psurf->numedges + 4) >= edge_max)
+   }
+   /* ditto if not enough edges left */
+   if ((edge_p + psurf->numedges + 4) >= edge_max) {
+      r_edges_overflow = true;
       return;
+   }
 
    /* this is a dummy to give the caching mechanism someplace to write to */
    r_pedge = &tedge;

@@ -337,6 +337,9 @@ void BGM_PlayCDtrack (byte track, qboolean looping)
 		if (! bgmstream)
 			Con_Printf("Couldn't handle music file %s\n", tmp);
 	}
+	else
+		Con_Printf("No music for track %d: no %s/track%02d.* in the game dirs (e.g. id1/%s/)\n",
+			   (int)track, MUSIC_DIRNAME, (int)track, MUSIC_DIRNAME);
 }
 
 void BGM_Stop (void)

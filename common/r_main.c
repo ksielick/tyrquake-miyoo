@@ -56,6 +56,60 @@ int r_maxsurfsseen, r_maxedgesseen;
 static int r_cnumsurfs;
 static qboolean r_surfsonstack;
 
+/* Set by R_RenderFace / R_RenderBmodelFace when the surface or edge
+ * buffer is full.  R_EdgeDrawing then grows the buffer and rebuilds
+ * the frame's edge list (TyrQuake 0.71's automatic r_maxsurfs /
+ * r_maxedges), instead of leaving holes in big maps.  Grown buffers
+ * are malloc'd (the hunk can't grow mid-map) and kept for later maps. */
+qboolean r_surfaces_overflow, r_edges_overflow;
+static surf_t *grown_surfs;
+static edge_t *grown_edges;
+static int grown_numsurfs, grown_numedges;
+
+static void R_UseGrownSurfs(void)
+{
+   surfaces = grown_surfs;
+   surf_max = &surfaces[r_cnumsurfs];
+   r_surfsonstack = false;
+   /* surface 0 doesn't really exist; it's just a dummy because index 0 */
+   /* is used to indicate no edge attached to surface */
+   surfaces--;
+}
+
+/* returns false when nothing could grow (at the hard limits) */
+static qboolean R_GrowSurfEdges(void)
+{
+   qboolean grew = false;
+
+   if (r_surfaces_overflow && r_cnumsurfs < MAXSURFACES) {
+      int n = qmin(r_cnumsurfs * 2, MAXSURFACES);
+      surf_t *s = calloc(n, sizeof(surf_t));
+      if (s) {
+         free(grown_surfs);
+         grown_surfs = s;
+         grown_numsurfs = r_cnumsurfs = n;
+         R_UseGrownSurfs();
+         grew = true;
+         Con_DPrintf("surface limit bumped to %d\n", n);
+      }
+   }
+   if (r_edges_overflow && r_numallocatededges < MAXEDGES) {
+      int n = qmin(r_numallocatededges * 2, MAXEDGES);
+      /* zeroed: edge-cache offsets left from the aborted pass must not
+       * match an owner in the new buffer */
+      edge_t *e = calloc(n, sizeof(edge_t));
+      if (e) {
+         free(grown_edges);
+         auxedges = r_edges = grown_edges = e;
+         grown_numedges = r_numallocatededges = n;
+         grew = true;
+         Con_DPrintf("edge limit bumped to %d\n", n);
+      }
+   }
+   r_surfaces_overflow = r_edges_overflow = false;
+   return grew;
+}
+
 byte *r_warpbuffer;
 /* Warp buffer must be sized for the largest vid.height the
  * software renderer can drive, not WARP_HEIGHT, because the
@@ -451,7 +505,10 @@ R_NewMap(void)
 	}
 	r_cnumsurfs = qclamp(requested_surfs, MINSURFACES, MAXSURFACES);
     }
-    if (r_cnumsurfs > NUMSTACKSURFACES) {
+    if (grown_surfs && grown_numsurfs >= r_cnumsurfs) {
+	r_cnumsurfs = grown_numsurfs;
+	R_UseGrownSurfs();
+    } else if (r_cnumsurfs > NUMSTACKSURFACES) {
 	surfaces = (surf_t*)Hunk_Alloc(r_cnumsurfs * sizeof(surf_t));
 	surface_p = surfaces;
 	surf_max = &surfaces[r_cnumsurfs];
@@ -474,7 +531,10 @@ R_NewMap(void)
 	}
 	r_numallocatededges = qclamp(requested_edges, MINEDGES, MAXEDGES);
     }
-    if (r_numallocatededges <= NUMSTACKEDGES)
+    if (grown_edges && grown_numedges >= r_numallocatededges) {
+	r_numallocatededges = grown_numedges;
+	auxedges = grown_edges;
+    } else if (r_numallocatededges <= NUMSTACKEDGES)
 	auxedges = NULL;
     else
 	auxedges = (edge_t*)Hunk_Alloc(r_numallocatededges * sizeof(edge_t));
@@ -1367,24 +1427,33 @@ static void R_EdgeDrawing(void)
     * fall through to single-pass vanilla rendering even with
     * liquid blend on -- saves the second BSP walk for the common
     * case of being in a pure-land room. */
-   if (r_nocull_active) {
-      r_renderpass = 1;
-      r_renderpass_seen_liquid = 0;
-   } else {
-      r_renderpass = 0;
+   r_surfaces_overflow = r_edges_overflow = false;
+   for (;;) {
+      if (r_nocull_active) {
+         r_renderpass = 1;
+         r_renderpass_seen_liquid = 0;
+      } else {
+         r_renderpass = 0;
+      }
+
+      R_BeginEdgeFrame();
+
+      R_RenderWorld();
+
+      /* only the world can be drawn back to front with no z reads or compares, */
+      /* just z writes, so have the driver turn z compares on now */
+      D_TurnZOn();
+
+      R_DrawBEntitiesOnList();
+
+      /* out of surfaces/edges: grow and rebuild (nothing is drawn yet) */
+      if (!(r_surfaces_overflow || r_edges_overflow) || !R_GrowSurfEdges())
+         break;
    }
 
-   R_BeginEdgeFrame();
-
-   R_RenderWorld();
-
-   /* only the world can be drawn back to front with no z reads or compares, */
-   /* just z writes, so have the driver turn z compares on now */
-   D_TurnZOn();
-
-   R_DrawBEntitiesOnList();
-
+   perf_timing_section_begin(PERF_SECTION_SW_SCAN);
    R_ScanEdges();
+   perf_timing_section_end(PERF_SECTION_SW_SCAN);
 
    /* Pass 2 only runs if pass 1 saw a liquid surface.  Most rooms
     * in most maps don't have liquid in view, so this skips the
@@ -1396,7 +1465,9 @@ static void R_EdgeDrawing(void)
       R_BeginEdgeFrame();
       R_RenderWorld();
       R_DrawBEntitiesOnList();
+      perf_timing_section_begin(PERF_SECTION_SW_SCAN);
       R_ScanEdges();
+      perf_timing_section_end(PERF_SECTION_SW_SCAN);
    }
    r_renderpass = 0;
 }
@@ -1422,11 +1493,15 @@ R_RenderView(void)
     if (!r_worldentity.model || !cl.worldmodel)
 	Sys_Error("%s: NULL worldmodel", __func__);
 
+    perf_timing_section_begin(PERF_SECTION_SW_EDGEDRAW);
     R_EdgeDrawing();
+    perf_timing_section_end(PERF_SECTION_SW_EDGEDRAW);
 
+    perf_timing_section_begin(PERF_SECTION_SW_ENTS);
     R_DrawEntitiesOnList();
 
     R_DrawViewModel();
+    perf_timing_section_end(PERF_SECTION_SW_ENTS);
 
     R_DrawParticles();
 

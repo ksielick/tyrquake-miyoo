@@ -338,6 +338,7 @@ int CL_GetMessage(void);
 
 void CL_TimeDemo_f(void);
 void CL_PlayDemo_f(void);
+extern cvar_t timedemo_quit;
 struct stree_root *CL_Demo_Arg_f(const char *arg);
 
 /**/

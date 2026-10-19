@@ -865,7 +865,9 @@ SCR_UpdateScreen(void)
       vrect.height = scr_vrect.height;
    }
    vrect.pnext = 0;
+   perf_timing_section_begin(PERF_SECTION_SW_VIDUPD);
    VID_Update(&vrect);
+   perf_timing_section_end(PERF_SECTION_SW_VIDUPD);
    perf_timing_section_end(PERF_SECTION_HOST_2D);
 }
 

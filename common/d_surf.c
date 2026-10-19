@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 /* d_surf.c: rasterization driver surface heap manager */
 
+#include "perf_timing.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -252,7 +253,9 @@ D_CacheSurface(const entity_t *e, msurface_t *surface, int miplevel)
    r_drawsurf.surf = surface;
 
    c_surf++;
+   perf_timing_section_begin(PERF_SECTION_SW_CACHE);
    R_DrawSurface();
+   perf_timing_section_end(PERF_SECTION_SW_CACHE);
 
    return surface->cachespots[miplevel];
 }

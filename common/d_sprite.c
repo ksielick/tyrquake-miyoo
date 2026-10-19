@@ -64,7 +64,8 @@ D_SpriteDrawSpans(sspan_t * pspan)
 
       count = pspan->count;
 
-      if (count <= 0)
+      /* v < 0: badly clipped sprite above the view (TyrQuake 0.69 fix) */
+      if (count <= 0 || pspan->v < 0)
          goto NextSpan;
 
       /* calculate the initial s/z, t/z, 1/z, s, and t and clamp */

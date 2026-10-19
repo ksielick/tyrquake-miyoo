@@ -30,7 +30,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sys.h"
 #include "zone.h"
 
+#include "perf_timing.h"
+
+#include <libretro.h>
 #include <streams/file_stream.h>
+
+extern retro_environment_t environ_cb;
 
 /* forward declarations */
 int rfclose(RFILE* stream);
@@ -43,6 +48,38 @@ int rfprintf(RFILE * stream, const char * format, ...);
 int rfgetc(RFILE* stream);
 
 static void CL_FinishTimeDemo(void);
+
+/* realtime advances a fixed 1/framerate per retro_run, so timedemo's own
+ * numbers only count frames; these track the frontend's wall clock. */
+cvar_t timedemo_quit = { "timedemo_quit", "0" };
+#define TD_MAX_FRAMES 16384
+static float td_frame_ms[TD_MAX_FRAMES];
+static int td_wall_frames;
+static double td_wall_start, td_wall_last;
+
+static void CL_TimeDemoWallFrame(void)
+{
+   double now = perf_timing_now_usec();
+
+   if (host_framecount == cls.td_startframe + 1)
+   {
+      td_wall_start = td_wall_last = now;
+      td_wall_frames = 0;
+      return;
+   }
+   if (host_framecount <= cls.td_startframe + 1)
+      return;
+   if (td_wall_frames < TD_MAX_FRAMES)
+      td_frame_ms[td_wall_frames] = (float)((now - td_wall_last) / 1000.0);
+   td_wall_frames++;
+   td_wall_last = now;
+}
+
+static int CL_CompareFloat(const void *a, const void *b)
+{
+   float fa = *(const float *)a, fb = *(const float *)b;
+   return (fa > fb) - (fa < fb);
+}
 
 /*
 ==============================================================================
@@ -111,6 +148,7 @@ CL_GetMessage(void)
             /* so the bogus time on the first frame doesn't count */
             if (host_framecount == cls.td_startframe + 1)
                cls.td_starttime = realtime;
+            CL_TimeDemoWallFrame();
          }
          else if (cl.time <= cl.mtime[0])
          {
@@ -293,6 +331,26 @@ static void CL_FinishTimeDemo(void)
 	time = 1;
     Con_Printf("%i frames %5.1f seconds %5.1f fps\n", frames, time,
 	       frames / time);
+
+    if (td_wall_frames > 0 && td_wall_last > td_wall_start) {
+	int n = td_wall_frames < TD_MAX_FRAMES ? td_wall_frames : TD_MAX_FRAMES;
+	double wall = (td_wall_last - td_wall_start) / 1000000.0;
+
+	qsort(td_frame_ms, n, sizeof(td_frame_ms[0]), CL_CompareFloat);
+	Con_Printf("timedemo wall: %i frames %.3f s %.2f fps, frame ms "
+		   "avg %.2f median %.2f p90 %.2f p99 %.2f max %.2f\n",
+		   td_wall_frames, wall, td_wall_frames / wall,
+		   wall * 1000.0 / td_wall_frames, td_frame_ms[n / 2],
+		   td_frame_ms[n * 9 / 10], td_frame_ms[n * 99 / 100],
+		   td_frame_ms[n - 1]);
+    }
+    td_wall_frames = 0;
+
+    if (timedemo_quit.value) {
+	extern bool shutdown_core;
+	shutdown_core = true;
+	environ_cb(RETRO_ENVIRONMENT_SHUTDOWN, NULL);
+    }
 }
 
 /*

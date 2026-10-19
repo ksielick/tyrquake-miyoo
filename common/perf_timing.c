@@ -69,6 +69,15 @@ ensure_init(void)
    perf_cb_ready = true;
 }
 
+double
+perf_timing_now_usec(void)
+{
+   ensure_init();
+   if (!perf_cb_ready)
+      return 0.0;
+   return (double)perf_cb.get_time_usec();
+}
+
 void
 perf_timing_register_cvars(void)
 {
@@ -202,6 +211,12 @@ perf_timing_end_frame(void)
               (unsigned long long)(counter_accum[PERF_COUNTER_DISPATCHES]       / fc),
               (unsigned long long)(counter_accum[PERF_COUNTER_VID_BUFFER_BYTES] / fc),
               (unsigned long long)(counter_accum[PERF_COUNTER_ZBUF_UPLOAD_BYTES]/ fc));
+
+#define SW_MS(s) (section_accum_usec[PERF_SECTION_SW_##s] / 1000.0 / (double)fc)
+   Con_Printf("SW: edgedraw %.2f (scan %.2f (dsurf %.2f (cache %.2f))) ents %.2f vidupd %.2f\n",
+              SW_MS(EDGEDRAW), SW_MS(SCAN), SW_MS(DSURF), SW_MS(CACHE), SW_MS(ENTS),
+              SW_MS(VIDUPD));
+#undef SW_MS
 
    for (i = 0; i < PERF_SECTION_COUNT; i++)
       section_accum_usec[i] = 0.0;

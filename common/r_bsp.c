@@ -318,6 +318,9 @@ void R_DrawSolidClippedSubmodelPolygons(const entity_t *e, model_t *pmodel)
    {
       if (psurf->clipflags == BMODEL_FULLY_CLIPPED)
          continue;
+      /* the copy below writes numedges entries into bedges[] unchecked */
+      if (psurf->numedges > MAX_BMODEL_EDGES - 2)
+         continue;
 
       /* draw the polygon */
       /* copy the edges to bedges, flipping if necessary so always */

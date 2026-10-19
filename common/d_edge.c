@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "rhi.h"
+#include "d_mt.h"
 
 #include "client.h"
 
@@ -65,7 +66,7 @@ D_DrawSolidSurface
 
 /* FIXME: clean this up */
 
-static void D_DrawSolidSurface(surf_t *surf, int color)
+static void D_DrawSolidSurface(espan_t *spans, int color)
 {
    espan_t *span;
    /* Shift in unsigned to avoid UB when color has bit 7 set
@@ -73,8 +74,10 @@ static void D_DrawSolidSurface(surf_t *surf, int color)
    unsigned int upix = (unsigned int)(color & 0xff);
    int pix = (int)((upix << 24) | (upix << 16) | (upix << 8) | upix);
 
-   for (span = surf->spans; span; span = span->pnext)
+   for (span = spans; span; span = span->pnext)
    {
+      if (D_SPAN_OUTSIDE_BAND(span))
+         continue;
       byte *pdest = (byte *)d_viewbuffer + screenwidth * span->v;
       int u = span->u;
       int u2 = span->u + span->count - 1;
@@ -158,6 +161,9 @@ void D_DrawSurfaces(void)
    vec3_t world_transformed_modelorg;
    vec3_t local_modelorg;
    const entity_t *e = &r_worldentity;
+   const qboolean mt = D_MT_Active();
+#define D_EMIT(op, spans, color) \
+   (mt ? D_MT_Record((op), (spans), (color)) : D_MT_Exec((op), (spans), (color)))
 
    TransformVector(modelorg, transformed_modelorg);
    VectorCopy(transformed_modelorg, world_transformed_modelorg);
@@ -216,8 +222,7 @@ void D_DrawSurfaces(void)
          }
          else
          {
-            D_DrawSkyScans8(s->spans);
-            D_DrawZSpans(s->spans);
+            D_EMIT(D_OP_SKY, s->spans, 0);
          }
       }
       else if (s->flags & SURF_DRAWBACKGROUND)
@@ -237,8 +242,7 @@ void D_DrawSurfaces(void)
          d_zistepv = 0;
          d_ziorigin = -0.9;
 
-         D_DrawSolidSurface(s, (int)r_clearcolor.value & 0xFF);
-         D_DrawZSpans(s->spans);
+         D_EMIT(D_OP_SOLID, s->spans, (int)r_clearcolor.value & 0xFF);
       }
       else if (s->flags & SURF_DRAWTURB)
       {
@@ -249,7 +253,8 @@ void D_DrawSurfaces(void)
          cacheblock = (pixel_t *)
             ((byte *)pface->texinfo->texture +
              pface->texinfo->texture->offsets[0]);
-         cachewidth = 64;
+         cachewidth = pface->texinfo->texture->width;
+         r_turb_texheight = pface->texinfo->texture->height;
 
          /* Pick the per-liquid-type alpha (water/lava/slime/tele)
           * from the surface texture name, then translate the user's
@@ -470,7 +475,8 @@ void D_DrawSurfaces(void)
          }
          else
          {
-            Turbulent8(s->spans);
+            D_EMIT((!liquids_translucent && r_renderpass != 2) ? D_OP_TURB_Z : D_OP_TURB,
+                   s->spans, 0);
             /* Z-write semantics:
              *   - Single-pass mode (pass 0): write z so alias models
              *     behind opaque liquid are occluded normally.
@@ -485,8 +491,6 @@ void D_DrawSurfaces(void)
              *     the buffer at pixels where liquid lost the z-test
              *     (D_DrawZSpans writes every pixel in the span
              *     regardless of compare result). */
-            if (!liquids_translucent && r_renderpass != 2)
-               D_DrawZSpans(s->spans);
          }
 
          if (s->insubmodel)
@@ -532,8 +536,7 @@ void D_DrawSurfaces(void)
          cachewidth = pcurrentcache->width;
 
          D_CalcGradients(pface);
-         D_DrawSpans(s->spans);
-         D_DrawZSpans(s->spans);
+         D_EMIT(D_OP_SPANS, s->spans, 0);
 
          if (s->insubmodel)
          {
@@ -550,5 +553,44 @@ void D_DrawSurfaces(void)
             R_TransformFrustum();
          }
       }
+   }
+
+   if (mt)
+      D_MT_Flush(d_flush_v0, d_flush_v1);
+#undef D_EMIT
+}
+
+/* rows covered by the spans of the current flush (set by R_ScanEdges) */
+int d_flush_v0, d_flush_v1;
+
+/*
+==============
+D_MT_Exec
+
+One recorded span-drawing call, for this thread's band of rows.
+==============
+*/
+void D_MT_Exec(int op, espan_t *spans, int color)
+{
+   switch (op) {
+   case D_OP_SPANS:
+      D_DrawSpans(spans);
+      D_DrawZSpans(spans);
+      break;
+   case D_OP_SKY:
+      D_DrawSkyScans8(spans);
+      D_DrawZSpans(spans);
+      break;
+   case D_OP_SOLID:
+      D_DrawSolidSurface(spans, color);
+      D_DrawZSpans(spans);
+      break;
+   case D_OP_TURB:
+      Turbulent8(spans);
+      break;
+   case D_OP_TURB_Z:
+      Turbulent8(spans);
+      D_DrawZSpans(spans);
+      break;
    }
 }
