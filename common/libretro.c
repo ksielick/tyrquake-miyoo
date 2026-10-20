@@ -1077,6 +1077,11 @@ static void update_variables(bool startup)
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
       realtime_steps = strcmp(var.value, "fixed") != 0;
 
+   var.key = "tyrquake_sound_filter";
+   var.value = NULL;
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+      snd_lowpass = strcmp(var.value, "off") != 0;
+
    var.key = "tyrquake_perf_log";
    var.value = NULL;
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)

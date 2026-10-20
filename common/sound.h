@@ -134,6 +134,8 @@ void S_StallEnd(void);
 /* a playing channel is about to be cut (replaced, stolen, stopped): the
  * mixer fades its last value out over ~2 ms instead of a step (a click) */
 void S_DeclickChannel(channel_t *ch);
+/* core option Sound Filter: 1 = low-pass the effects like an 11 kHz card */
+extern int snd_lowpass;
 void S_ClearBuffer(void);
 void S_Update(vec3_t origin, vec3_t v_forward, vec3_t v_right, vec3_t v_up);
 

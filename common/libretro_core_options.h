@@ -177,6 +177,17 @@ struct retro_core_option_definition option_defs_us[] = {
       "realtime"
    },
    {
+      "tyrquake_sound_filter",
+      "Sound Filter",
+      "'Original (11 kHz)': the effects are filtered like Quake's 11 kHz output on a 1996 sound card (nothing above ~5 kHz), which takes away the crackle of the 11 kHz samples played at a high rate. 'Off': the full range. The music is never filtered.",
+      {
+         { "original", "Original (11 kHz)" },
+         { "off",      "Off" },
+         { NULL, NULL },
+      },
+      "original"
+   },
+   {
       "tyrquake_perf_log",
       "Performance Log",
       "Write one line per second to perflog.csv in the game's save folder: frame times, frames over the budget, sound and music buffers, CPU time per frame, CPU clock and temperature. For finding slow places and sound problems in ordinary play.",

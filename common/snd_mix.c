@@ -28,6 +28,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sound.h"
 #include "perf_timing.h"
 
+#include <math.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 /* SIMD vector paths for the no-gather inner loops below.
  *
  * SMIX_SSE2:         enable SSE2 path (x86-64 baseline, opt-in x86)
@@ -211,6 +216,76 @@ static void S_DeclickTail (channel_t *ch, int start, int count)
 	dc_next_left += l;
 	dc_next_right += r;
 	ch->last_left = ch->last_right = 0;
+}
+
+/*
+ * "Original" sound filter (core option Sound Filter, snd_lowpass): Quake on
+ * DOS mixed at 11025 Hz, so the card's filter took everything above ~5 kHz
+ * away -- the edges where the 11 kHz samples are joined, sounds cut
+ * mid-wave, the 8-bit hiss.  At 48 kHz those reach the ear as crackle.  A
+ * 4th-order Butterworth low-pass at 5 kHz on the effects (not on the
+ * music, which came from the CD) gives that sound back.  Two biquads
+ * (Q 0.5412 and 1.3066), transposed direct form II, per stereo side.
+ */
+int snd_lowpass = 1;
+#define	LP_FC	5000.0f
+static int lp_speed;
+static float lp_b[2][3], lp_a[2][2];
+static float lp_z[2][2][2];	/* [biquad][side][state] */
+
+static void S_LowpassSetup (int speed)
+{
+	static const float q[2] = { 0.5412f, 1.3066f };
+	float w0 = 2.0f * (float) M_PI * LP_FC / (float) speed;
+	float c = cosf(w0), s = sinf(w0);
+	int k;
+
+	for (k = 0; k < 2; k++)
+	{
+		float alpha = s / (2.0f * q[k]), a0 = 1.0f + alpha;
+		lp_b[k][0] = (1.0f - c) * 0.5f / a0;
+		lp_b[k][1] = (1.0f - c) / a0;
+		lp_b[k][2] = (1.0f - c) * 0.5f / a0;
+		lp_a[k][0] = -2.0f * c / a0;
+		lp_a[k][1] = (1.0f - alpha) / a0;
+	}
+	memset(lp_z, 0, sizeof(lp_z));
+	lp_speed = speed;
+}
+
+static void S_LowpassChunk (int count)
+{
+	int i, side;
+
+	if (!snd_lowpass || shm->speed <= 11025)
+		return;
+	if (lp_speed != shm->speed)
+		S_LowpassSetup(shm->speed);
+	for (side = 0; side < 2; side++)
+	{
+		int *p = side ? &paintbuffer[0].right : &paintbuffer[0].left;
+		float z00 = lp_z[0][side][0], z01 = lp_z[0][side][1];
+		float z10 = lp_z[1][side][0], z11 = lp_z[1][side][1];
+
+		for (i = 0; i < count; i++, p += 2)
+		{
+			float x = (float) *p, y;
+
+			y = lp_b[0][0] * x + z00;
+			z00 = lp_b[0][1] * x - lp_a[0][0] * y + z01;
+			z01 = lp_b[0][2] * x - lp_a[0][1] * y;
+			x = y;
+			y = lp_b[1][0] * x + z10;
+			z10 = lp_b[1][1] * x - lp_a[1][0] * y + z11;
+			z11 = lp_b[1][2] * x - lp_a[1][1] * y;
+			*p = (int) y;
+		}
+		/* silence decays towards denormals: cut them off */
+		lp_z[0][side][0] = fabsf(z00) < 1e-3f ? 0.0f : z00;
+		lp_z[0][side][1] = fabsf(z01) < 1e-3f ? 0.0f : z01;
+		lp_z[1][side][0] = fabsf(z10) < 1e-3f ? 0.0f : z10;
+		lp_z[1][side][1] = fabsf(z11) < 1e-3f ? 0.0f : z11;
+	}
 }
 
 static int *snd_p, snd_linear_count;
@@ -464,6 +539,8 @@ void S_PaintChannels (int samples_to_paint)
 		dc_left += dc_next_left;
 		dc_right += dc_next_right;
 		dc_next_left = dc_next_right = 0.0f;
+
+		S_LowpassChunk(chunk);	/* the effects only: the music comes below */
 
 		/* Hard-limit the SFX mix to 0 dBFS (int16 full scale).  Note: the
 		 * upstream QuakeII/QuakeSpasm lineage these comments came from

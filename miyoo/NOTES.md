@@ -204,7 +204,7 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
 ## Installed on the card (2026-10-19, owner asked)
-- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 a38e69e7 = declicker + limiter + load fades (see Sound), before it 33cb3773, 03a5eeee, 91afb028 =
+- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 5125416a = sound filter + declicker + limiter + load fades (see Sound), before it a38e69e7, 33cb3773, 03a5eeee, 91afb028 =
   3ace1ed (play log) built with PGO + LTO** (pgo.sh; shots 59/59; before it: 4a500e2b = ee6132b
   PGO + LTO, a81e88ab PGO only), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
   `tyrquake_libretro.so` is untouched.
@@ -589,6 +589,18 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     (the rest: linear interpolation corners of the 11 kHz samples). WAVs:
     `<ws>/build/perflog/demo1_C_before_declick.wav`, `demo1_D_declick.wav`.
 - Installed 2026-10-20: core a38e69e7 (PGO+LTO, shots 59/59).
+- Owner still heard clicks; played Quake in 1996 without them. Why then: DOS Quake mixed at
+  11025 Hz (the card's filter removed everything above ~5 kHz, where clicks and the edges of
+  the interpolated 11 kHz samples live), the samples played at their own rate, the CD music
+  was mixed analogue, and the speakers had no treble.
+- Core option "Sound Filter" (`tyrquake_sound_filter`, original / off, default original;
+  snd_lowpass): 4th-order Butterworth low-pass at 5 kHz (biquads Q 0.5412 / 1.3066, TDF-II) on
+  the effects after painting and declicking, before the music and the limiter; skipped at
+  rates <= 11025. demo1 effects only: kinks > 4000 5355 → 22, > 8000 479 → 0, energy above
+  6 kHz 0.30 % → 0.02 %. WAV `<ws>/build/perflog/demo1_E_filter.wav`.
+- Cost (PGO+LTO, PERF=1 audio section, demo1 with music, 2 rounds): 1.46-1.48 → 1.51 ms per
+  frame (~0.04 ms); whole-frame timedemo within noise (12.67-12.87 vs 12.69-12.75 ms).
+- Installed 2026-10-20: core 5125416a (PGO+LTO, shots 59/59).
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
