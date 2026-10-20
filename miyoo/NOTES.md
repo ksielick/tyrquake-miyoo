@@ -204,9 +204,9 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
 ## Installed on the card (2026-10-19, owner asked)
-- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 a81e88ab =
-  the core sources of ee6132b (unchanged up to 13c9ecd) built with PGO** (the miyoo/tools/pgo.sh
-  steps), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
+- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 4a500e2b =
+  the core sources of ee6132b (unchanged up to d6dcf3b) built with PGO + LTO** (pgo.sh, r_misc.c
+  out of LTO; before it: a81e88ab, PGO only), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
   `tyrquake_libretro.so` is untouched.
 - Card settings for the 59.67 Hz test: `Saves/CurrentProfile/config/TyrQuake/TyrQuake.opt`
   tyrquake_framerate 40 → "59.67" (Slow Frames: default real time); core override
@@ -501,7 +501,7 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
 15.8-17.2: to bring p90 under 16.76 ms (heaviest first):
 - Done since: music decoding on its own thread, 59.67 fps option, Slow Frames real-time steps
   (no clicks when a frame is late), bench SYNC/FPS/VSYNC/REFRESH/LAT/RC/RESAMPLER, CPU per frame.
-- Done: 1. PGO (~3 %, installed 2026-10-20), LTO (~4 % more, built 2026-10-20, not installed).
+- Done: 1. PGO (~3 %, installed 2026-10-20), LTO (~4 % more, installed 2026-10-20).
 - Pacing: with audio_sync on the frames reach the screen in bursts (12/18/20 ms) whatever we do;
   vsync without audio_sync is even (16.76) but drops samples. Not solved; would need a frontend
   whose audio rate control works with Onion's OSS (or a standalone port).
