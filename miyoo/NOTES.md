@@ -604,6 +604,7 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   frame (~0.04 ms); whole-frame timedemo within noise (12.67-12.87 vs 12.69-12.75 ms).
 - Installed 2026-10-20: core 5125416a (PGO+LTO, shots 59/59).
 - Owner (2026-10-20): with the filter the sound is "much more pleasant and soft".
+- Owner's last play log with core 5125416a (153 s, e1m5/e1m1/start): 59.1 fps avg, 1.2 % of frames over the budget, limiter active in 92 s (lowest 0.31 = -10 dB, median of the per-second minima 0.68), music decoder never behind, 64-70 °C. Play log then turned off on the card (TyrQuake.opt perf_log disabled, the empty perflog.csv deleted).
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
