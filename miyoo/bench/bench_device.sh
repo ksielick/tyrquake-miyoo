@@ -78,6 +78,8 @@ if [ -n "$FPS" ]; then
 	grep -v tyrquake_framerate $T/core.opt > $T/core.opt.tmp && mv $T/core.opt.tmp $T/core.opt
 	echo "tyrquake_framerate = \"$FPS\"" >> $T/core.opt
 fi
+# PERFLOG=1: the play log (core option Performance Log) to $T/saves/tqbench/perflog.csv
+[ -n "$PERFLOG" ] && echo "tyrquake_perf_log = \"enabled\"" >> $T/core.opt
 echo "core options: $(grep -E "framerate|resolution" $T/core.opt | tr '\n' ' ')"
 cp $RA/.retroarch/retroarch.cfg $T/retroarch.cfg
 cat > $T/override.cfg <<EOF

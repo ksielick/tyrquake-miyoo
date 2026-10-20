@@ -177,6 +177,17 @@ struct retro_core_option_definition option_defs_us[] = {
       "realtime"
    },
    {
+      "tyrquake_perf_log",
+      "Performance Log",
+      "Write one line per second to perflog.csv in the game's save folder: frame times, frames over the budget, sound and music buffers, CPU time per frame, CPU clock and temperature. For finding slow places and sound problems in ordinary play.",
+      {
+         { "disabled", NULL },
+         { "enabled",  NULL },
+         { NULL, NULL },
+      },
+      "disabled"
+   },
+   {
       "tyrquake_sound_samplerate",
       "Sound Samplerate (Hint)",
       "Audio output rate. Quake mixes its sound at the chosen output rate. 'Auto' matches the frontend's target rate, which avoids the frontend resampler's extra filtering and group delay -- that rate-matching, not a higher number, is what helps latency. Higher fixed rates give the music-stream resampler finer time resolution and reduce aliasing fold-back, but do little for Quake's own sound effects, which are low-rate and nearest-neighbour resampled (their artifacts sit at fixed low frequencies regardless of output rate). Falls back to the framerate-appropriate rate when the frontend can't report one. Takes effect on restart.",

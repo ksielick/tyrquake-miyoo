@@ -26,6 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "console.h"
 #include "quakedef.h"
 #include "sound.h"
+#include "perf_timing.h"
 
 /* SIMD vector paths for the no-gather inner loops below.
  *
@@ -339,6 +340,9 @@ void S_PaintChannels (int samples_to_paint)
 			{
 				int bgm_count = (s_rawavail < chunk) ? s_rawavail : chunk;
 
+				if (bgm_count < chunk)	/* the music ran out here: a gap (play log) */
+					perf_timing_counter_add(PERF_COUNTER_MIX_SHORT, 1);
+
 				for (i = 0; i < bgm_count; i++)
 				{
 					int   s = (s_rawhead + i) & (MAX_RAW_SAMPLES - 1);
@@ -362,17 +366,26 @@ void S_PaintChannels (int samples_to_paint)
 			{
 				/* copy from the streaming sound source */
 				int bgm_count = (s_rawavail < chunk) ? s_rawavail : chunk;
+				int clipped = 0;	/* frames the sum will clip (play log) */
+
+				if (bgm_count < chunk)	/* the music ran out here: a gap (play log) */
+					perf_timing_counter_add(PERF_COUNTER_MIX_SHORT, 1);
 
 				for (i = 0; i < bgm_count; i++)
 				{
 					int s = (s_rawhead + i) & (MAX_RAW_SAMPLES - 1);
+					int l, r;
 					/* Summed at unity onto the already-clamped SFX; the
 					 * final transfer clamps the total, so a loud SFX bed
 					 * plus loud music clips at 0 dBFS.  (The "6 dB" the
 					 * upstream comment mentioned is not applied here.) */
-					paintbuffer[i].left  += s_rawsamples[s].left;
-					paintbuffer[i].right += s_rawsamples[s].right;
+					l = paintbuffer[i].left  += s_rawsamples[s].left;
+					r = paintbuffer[i].right += s_rawsamples[s].right;
+					clipped += (l > (32767 << 8)) | (l < -(32768 << 8)) |
+						   (r > (32767 << 8)) | (r < -(32768 << 8));
 				}
+				if (clipped)
+					perf_timing_counter_add(PERF_COUNTER_MIX_CLIP, clipped);
 
 				s_rawhead   = (s_rawhead + bgm_count) & (MAX_RAW_SAMPLES - 1);
 				s_rawavail -= bgm_count;

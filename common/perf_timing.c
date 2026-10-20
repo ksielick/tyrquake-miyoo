@@ -22,10 +22,17 @@
  * block scope.
  */
 
+#ifdef __linux__
+#define _GNU_SOURCE	/* RUSAGE_THREAD */
+#include <sys/resource.h>
+#endif
+
 #include "perf_timing.h"
 
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "console.h"
 #include "cvar.h"
@@ -53,6 +60,25 @@ static uint64_t counter_accum[PERF_COUNTER_COUNT];
 static uint32_t frame_count_accum = 0;
 static double log_window_start_usec = 0.0;
 
+/* play log (perf_timing_set_log) */
+#define PLAY_BINS 256			/* busy-time histogram, 0.25 ms bins */
+static FILE *play_log;
+static double play_t0_usec;
+static struct {
+   uint32_t frames, late20, late25, over, realsteps;
+   double interval_max, busy_sum, busy_max, wait_sum;
+   uint32_t busy_hist[PLAY_BINS];
+   int bgm_min_ms;
+   unsigned long long samples_start, samples_now;
+   char map[32];
+} play;
+static double play_budget_usec = 1000000.0 / 60.0;
+#ifdef __linux__
+static double play_cpu_proc, play_cpu_main;	/* usec at the window start */
+#endif
+
+#define PERF_ON (r_perf.value != 0.0f || play_log)
+
 static void
 ensure_init(void)
 {
@@ -78,6 +104,189 @@ perf_timing_now_usec(void)
    return (double)perf_cb.get_time_usec();
 }
 
+#ifdef __linux__
+static double
+cpu_usec(int who)
+{
+   struct rusage ru;
+   if (getrusage(who, &ru) != 0)
+      return 0.0;
+   return (ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) * 1000000.0
+      + ru.ru_utime.tv_usec + ru.ru_stime.tv_usec;
+}
+#endif
+
+/* first number in a sysfs file, -1 if there is none */
+static long
+read_sys(const char *path)
+{
+   /* by hand: with _GNU_SOURCE fscanf/strtol bind the __isoc23_ versions (glibc 2.38) */
+   char line[32];
+   const char *p = line;
+   long v = -1;
+   FILE *f = fopen(path, "r");
+   if (!f)
+      return -1;
+   if (fgets(line, sizeof(line), f))
+   {
+      while (*p && (*p < '0' || *p > '9'))	/* "Temp=60" */
+         p++;
+      for (; *p >= '0' && *p <= '9'; p++)
+         v = (v < 0 ? 0 : v * 10) + (*p - '0');
+   }
+   fclose(f);
+   return v;
+}
+
+static void
+play_reset(void)
+{
+   unsigned long long s = play.samples_now;
+   memset(&play, 0, sizeof(play));
+   play.samples_start = play.samples_now = s;
+   play.bgm_min_ms = -1;
+#ifdef __linux__
+   play_cpu_proc = cpu_usec(RUSAGE_SELF);
+   play_cpu_main = cpu_usec(RUSAGE_THREAD);
+#endif
+}
+
+void
+perf_timing_set_log(const char *path, double fps)
+{
+   if (fps > 0.0)
+      play_budget_usec = 1000000.0 / fps;
+   if (play_log && path)
+      return;
+   if (play_log)
+   {
+      fclose(play_log);
+      play_log = NULL;
+      return;
+   }
+   if (!path)
+      return;
+   play_log = fopen(path, "a");
+   if (!play_log)
+   {
+      Con_Printf("Performance log: can't open %s\n", path);
+      return;
+   }
+   {
+      char date[32];
+      time_t t = time(NULL);
+      strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", localtime(&t));
+      fprintf(play_log, "# session %s, core " GIT_VERSION ", %.2f fps budget %.2f ms\n",
+              date, fps, play_budget_usec / 1000.0);
+   }
+   /* per second: frame counts, wall time between frames, the frame's own
+    * work (busy = wall minus the wait in audio_batch_cb) and its 90th
+    * percentile, sound, music, CPU (ms per frame), the r_perf sections
+    * (ms per frame), CPU clock and temperature */
+   fprintf(play_log, "t,map,frames,fps,late20,late25,interval_max,busy_avg,busy_p90,busy_max,over,"
+           "realsteps,audio_wait,samples_s,bgm_dry,bgm_min_ms,mix_short,clip,cpu_main,cpu_proc,"
+           "render,view3d,hud2d,edges,ents,vidupd,audio,bgm,audio_cb,mhz,temp\n");
+   fflush(play_log);
+   play_t0_usec = 0.0;
+   play_reset();
+   log_window_start_usec = 0.0;
+}
+
+void
+perf_timing_frame(double interval_usec, double busy_usec, double audio_wait_usec,
+                  int realtime_step, unsigned long long samples_total, const char *map)
+{
+   int bin;
+
+   if (!play_log)
+      return;
+   play.samples_now = samples_total;
+   if (play_t0_usec == 0.0)	/* the first frame has no interval */
+   {
+      play_t0_usec = perf_timing_now_usec();
+      play.samples_start = samples_total;
+      return;
+   }
+   play.frames++;
+   if (interval_usec > 20000.0)
+      play.late20++;
+   if (interval_usec > 25000.0)
+      play.late25++;
+   if (interval_usec > play.interval_max)
+      play.interval_max = interval_usec;
+   play.busy_sum += busy_usec;
+   if (busy_usec > play.busy_max)
+      play.busy_max = busy_usec;
+   if (busy_usec > play_budget_usec)
+      play.over++;
+   bin = (int)(busy_usec / 250.0);
+   play.busy_hist[bin < 0 ? 0 : bin >= PLAY_BINS ? PLAY_BINS - 1 : bin]++;
+   play.wait_sum += audio_wait_usec;
+   if (realtime_step)
+      play.realsteps++;
+   if (map)
+      snprintf(play.map, sizeof(play.map), "%s", map);
+}
+
+void
+perf_timing_bgm_fill(int ms)
+{
+   if (play_log && (play.bgm_min_ms < 0 || ms < play.bgm_min_ms))
+      play.bgm_min_ms = ms;
+}
+
+/* CPU temperature in C: the Miyoo's SigmaStar driver, else the usual thermal zone */
+static double
+cpu_temp(void)
+{
+   long v = read_sys("/sys/devices/system/cpu/cpufreq/temp_out");
+   if (v >= 0)
+      return (double)v;
+   v = read_sys("/sys/class/thermal/thermal_zone0/temp");
+   return v >= 0 ? v / 1000.0 : -1.0;
+}
+
+static void
+play_write(double now, double window_elapsed, uint32_t fc)
+{
+   uint32_t n = play.frames, acc = 0;
+   double p90 = 0.0, cpu_proc = 0.0, cpu_main = 0.0, secs = window_elapsed / 1000000.0;
+   int i;
+
+   if (!n)
+      return;
+   for (i = 0; i < PLAY_BINS; i++)
+   {
+      acc += play.busy_hist[i];
+      if (acc * 10 >= n * 9)
+      {
+         p90 = (i + 1) * 0.25;
+         break;
+      }
+   }
+#ifdef __linux__
+   cpu_proc = (cpu_usec(RUSAGE_SELF) - play_cpu_proc) / 1000.0 / n;
+   cpu_main = (cpu_usec(RUSAGE_THREAD) - play_cpu_main) / 1000.0 / n;
+#endif
+#define MS(s) (section_accum_usec[PERF_SECTION_##s] / 1000.0 / (double)fc)
+   fprintf(play_log, "%.1f,%s,%u,%.2f,%u,%u,%.1f,%.2f,%.2f,%.1f,%u,%u,%.2f,%.0f,%u,%d,%u,%u,%.2f,%.2f,"
+           "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%ld,%.1f\n",
+           (now - play_t0_usec) / 1000000.0, play.map, n, n / secs, play.late20, play.late25,
+           play.interval_max / 1000.0, play.busy_sum / 1000.0 / n, p90, play.busy_max / 1000.0,
+           play.over, play.realsteps, play.wait_sum / 1000.0 / n,
+           (play.samples_now - play.samples_start) / secs,
+           (unsigned)counter_accum[PERF_COUNTER_BGM_DRY], play.bgm_min_ms,
+           (unsigned)counter_accum[PERF_COUNTER_MIX_SHORT],
+           (unsigned)counter_accum[PERF_COUNTER_MIX_CLIP], cpu_main, cpu_proc,
+           MS(RENDERVIEW), MS(HOST_RV), MS(HOST_2D), MS(SW_EDGEDRAW), MS(SW_ENTS), MS(SW_VIDUPD),
+           MS(AUDIO), MS(AUDIO_BGM), MS(AUDIO_CB),
+           read_sys("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq") / 1000,
+           cpu_temp());
+#undef MS
+   fflush(play_log);
+   play_reset();
+}
+
 void
 perf_timing_register_cvars(void)
 {
@@ -87,7 +296,7 @@ perf_timing_register_cvars(void)
 void
 perf_timing_section_begin(int section_id)
 {
-   if (r_perf.value == 0.0f)
+   if (!PERF_ON)
       return;
    ensure_init();
    if (!perf_cb_ready)
@@ -101,7 +310,7 @@ void
 perf_timing_section_end(int section_id)
 {
    double now;
-   if (r_perf.value == 0.0f)
+   if (!PERF_ON)
       return;
    if (!perf_cb_ready)
       return;
@@ -114,7 +323,7 @@ perf_timing_section_end(int section_id)
 void
 perf_timing_counter_add(int counter_id, uint64_t n)
 {
-   if (r_perf.value == 0.0f)
+   if (!PERF_ON)
       return;
    if (counter_id < 0 || counter_id >= PERF_COUNTER_COUNT)
       return;
@@ -145,7 +354,7 @@ perf_timing_end_frame(void)
    uint32_t fc;
    int i;
 
-   if (r_perf.value == 0.0f)
+   if (!PERF_ON)
       return;
    ensure_init();
    if (!perf_cb_ready) {
@@ -163,6 +372,8 @@ perf_timing_end_frame(void)
 
    if (log_window_start_usec == 0.0) {
       log_window_start_usec = now;
+      if (play_log)
+         play_reset();
       return;
    }
 
@@ -171,6 +382,10 @@ perf_timing_end_frame(void)
       return;
 
    fc = frame_count_accum;
+   if (play_log)
+      play_write(now, window_elapsed, fc);
+   if (r_perf.value == 0.0f)
+      goto reset;	/* only the play log is on */
    window_ms      = window_elapsed / 1000.0;
    fps            = (double)fc / (window_elapsed / 1000000.0);
    frame_ms_avg   = section_accum_usec[PERF_SECTION_FRAME]          / 1000.0 / (double)fc;
@@ -220,6 +435,7 @@ perf_timing_end_frame(void)
               section_accum_usec[PERF_SECTION_AUDIO_CB] / 1000.0 / (double)fc);
 #undef SW_MS
 
+reset:
    for (i = 0; i < PERF_SECTION_COUNT; i++)
       section_accum_usec[i] = 0.0;
    for (i = 0; i < PERF_COUNTER_COUNT; i++)

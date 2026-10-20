@@ -494,6 +494,34 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
 - shots.sh pins FPS=40 (the reference set's framerate; the owner's option is now 59.67, which
   moves e.g. when notify lines vanish — 34 shots differed in the top-left text only).
 
+## Play log: timing ordinary play (2026-10-20, owner asked)
+- Owner: after PGO+LTO, light knocks only with music on; without music fine.
+- Core option "Performance Log" (`tyrquake_perf_log`, default off): perf_timing.c appends one
+  CSV line per second to `perflog.csv` in the game's save folder (card:
+  `Saves/CurrentProfile/saves/TyrQuake/id1/`, SMB `//192.168.0.246/Saves/TyrQuake/id1/`), a
+  `# session` line (date, core, framerate, budget) and a header per start. Per second: frames,
+  fps, frames >20/>25 ms apart, max interval, the frame's own work (wall minus the wait in
+  audio_batch_cb) avg/p90 (0.25 ms histogram)/max, frames over the budget, real-time steps,
+  audio wait, samples/s, music decoder dry frames, least music decoded ahead (ms), mixer chunks
+  where the music ran out, clipped sample frames (music + effects over full scale, int16 lane),
+  CPU ms per frame (main thread, process), the r_perf sections, CPU MHz, temperature (Miyoo:
+  `/sys/devices/system/cpu/cpufreq/temp_out`, "Temp=60"). While on, the sections run as with
+  r_perf 1. Map = the client's world model (demos have no server).
+- `py -3 miyoo/tools/perflog.py [csv] [--all] [--keep]`: fetches the card's file into
+  `<ws>/build/perflog/` (and empties it), prints totals, a per-map table, the worst seconds,
+  music gaps, the loudest (clipped) seconds, and a 4-panel chart PNG next to the CSV.
+- bench `PERFLOG=1` turns it on (file in /tmp/tqbench/saves/tqbench/perflog.csv).
+- The owner's Quake config now has `bgmvolume 0` (music off), so benches copy that: use
+  `CFG="bgmvolume 1"` for music.
+- First findings (SYNC=1 FPS=59.67 timedemo_realsteps 1 bgmvolume 1, core baa6adda):
+  - music decoder never behind except 1-2 frames at a track start; ring ~2.86 s ahead all
+    the time: not the knocks.
+  - **clipping**: demo1 music + effects clipped in 14 of 16 seconds, up to 15 193 sample
+    frames in one second (~1/3 of 48 000). The mixer adds the music at unity onto the
+    (already clamped) effects and hard-clips the sum (snd_mix.c): the likely knocks.
+  - glibc: with _GNU_SOURCE, fscanf/strtol bind __isoc23_* (2.38): perf_timing.c parses sysfs
+    numbers by hand.
+
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +

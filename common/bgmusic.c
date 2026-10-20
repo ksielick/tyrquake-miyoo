@@ -33,6 +33,7 @@
 #include "snd_codec.h"
 #include "bgmusic.h"
 #include "sys.h"
+#include "perf_timing.h"
 
 #define MUSIC_DIRNAME	"music"
 
@@ -617,6 +618,7 @@ static void BGM_UpdateStream (void)
 					return;
 				}
 				dec_behind++;
+				perf_timing_counter_add(PERF_COUNTER_BGM_DRY, 1);
 				break;		/* the decoder is behind */
 			}
 			__sync_synchronize();
@@ -633,6 +635,10 @@ static void BGM_UpdateStream (void)
 					bgmstream->info.channels,
 					raw, bgmvolume.value);
 		}
+
+		/* what the decoder is ahead by (play log) */
+		perf_timing_bgm_fill((int) ((unsigned long long) (ring_in - ring_out) * 1000 /
+				 ((unsigned) frame * bgmstream->info.rate)));
 
 		/* room for more: wake the decoder */
 		pthread_mutex_lock(&dec_lock);

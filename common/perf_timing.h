@@ -90,8 +90,31 @@ enum {
    PERF_COUNTER_DISPATCHES,
    PERF_COUNTER_VID_BUFFER_BYTES,
    PERF_COUNTER_ZBUF_UPLOAD_BYTES,
+   PERF_COUNTER_BGM_DRY,          /* frames the music decoder's ring was empty */
+   PERF_COUNTER_MIX_SHORT,        /* mixer chunks the music ran out in */
+   PERF_COUNTER_MIX_CLIP,         /* sample frames music + effects clipped (int16 lane) */
    PERF_COUNTER_COUNT
 };
+
+/*
+ * Play log (core option "Performance Log"): one CSV line per second
+ * appended to path, for timing ordinary play; fps = the core framerate
+ * (the per-frame budget).  NULL closes it.  While it is open the
+ * sections and counters run as with r_perf 1.
+ */
+void perf_timing_set_log(const char *path, double fps);
+
+/*
+ * Once per frame from retro_run (before Host_Frame): the wall time since
+ * the last frame, the part of it not spent waiting in audio_batch_cb,
+ * that wait, whether the frame got a real-time (longer) step, the
+ * samples pushed so far and the map.  Only used by the play log.
+ */
+void perf_timing_frame(double interval_usec, double busy_usec, double audio_wait_usec,
+                       int realtime_step, unsigned long long samples_total, const char *map);
+
+/* Music decoder ring fill in ms, sampled each frame (play log: the minimum). */
+void perf_timing_bgm_fill(int ms);
 
 /*
  * Register the r_perf cvar with the cvar system.  Must

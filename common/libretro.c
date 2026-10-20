@@ -317,6 +317,9 @@ static float frametime_usec = 1000.0f / 60.0f;
  * ~30 fps.  Timedemos keep fixed steps, so they replay the same frames. */
 static bool realtime_steps = true;
 static double frame_step = 1.0 / 60.0;	/* seconds, this frame */
+/* core option "Performance Log": perflog.csv in the save dir (perf_timing.c) */
+static bool perf_log_wanted;
+static char perf_log_path[PATH_MAX_LENGTH];
 static double audio_push_usec;		/* in audio_batch_cb since last frame */
 unsigned long long audio_frames_pushed;	/* to the frontend (timedemo report) */
 
@@ -326,11 +329,18 @@ static double next_frame_step(void)
    double step = 1.0 / framerate;
    double now = perf_timing_now_usec();
 
-   if (realtime_steps && (!cls.timedemo || timedemo_realsteps.value) && now > 0.0 && last_usec > 0.0)
+   if (now > 0.0 && last_usec > 0.0)
    {
       double busy = (now - last_usec - audio_push_usec) / 1000000.0;
-      if (busy > step)
+      bool realstep = false;
+      if (realtime_steps && (!cls.timedemo || timedemo_realsteps.value) && busy > step)
+      {
          step = busy < 0.05 ? busy : 0.05;
+         realstep = true;
+      }
+      perf_timing_frame(now - last_usec, busy * 1000000.0, audio_push_usec, realstep,
+                        audio_frames_pushed,
+                        cls.state == ca_active && cl.worldmodel ? cl.worldmodel->name : "");
    }
    last_usec = now;
    audio_push_usec = 0.0;
@@ -514,6 +524,7 @@ void retro_deinit(void)
    /* the drawing thread must be gone before the core is unloaded */
    D_MT_Shutdown();
    BGM_StopThread();
+   perf_timing_set_log(NULL, 0.0);
 
    if (!shutdown_core)
    {
@@ -1057,6 +1068,13 @@ static void update_variables(bool startup)
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
       realtime_steps = strcmp(var.value, "fixed") != 0;
 
+   var.key = "tyrquake_perf_log";
+   var.value = NULL;
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+      perf_log_wanted = strcmp(var.value, "enabled") == 0;
+   if (perf_log_path[0])
+      perf_timing_set_log(perf_log_wanted ? perf_log_path : NULL, framerate);
+
    var.key = "tyrquake_resolution";
    var.value = NULL;
 
@@ -1465,6 +1483,10 @@ bool retro_load_game(const struct retro_game_info *info)
 		/*   (i.e. ensure logical behaviour if user has set a bizarre save path...) */
 		use_external_savedir = (strcmp(g_save_dir, g_rom_dir) != 0);
 	}
+
+   fill_pathname_join(perf_log_path, g_save_dir, "perflog.csv", sizeof(perf_log_path));
+   if (perf_log_wanted)
+      perf_timing_set_log(perf_log_path, framerate);
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rumble))
       log_cb(RETRO_LOG_INFO, "Rumble environment supported.\n");
