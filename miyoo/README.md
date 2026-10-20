@@ -47,7 +47,7 @@ Steps:
      the mission packs and Dimension of the Past (see [Mission packs](#mission-packs)).
      Existing shortcuts with these names are replaced.
    - RetroArch settings for this core,
-     `Saves/CurrentProfile/config/TyrQuake/FPS - Quake Collection (TyrQuake).cfg`: *Audio Sync*
+     `Saves/CurrentProfile/config/TyrQuake-Miyoo/TyrQuake-Miyoo.cfg`: *Audio Sync*
      on, the *sinc* resampler and the screen's 59.67 Hz refresh (see
      [RetroArch settings](#retroarch-settings)).
 3. On the Miyoo: *Games → Ports → 1996 Quake*. Refresh the list from its menu if it doesn't show.
@@ -57,9 +57,17 @@ The first start takes a few seconds longer: RetroArch rebuilds its list of cores
 Music (optional): the soundtrack as `id1/music/track02.ogg` ... `track11.ogg`. The core looks for it
 inside the game's folder.
 
-Saves and settings are shared with the stock TyrQuake core: Quake's savegames and `config.cfg` in
-`Saves/CurrentProfile/saves/TyrQuake/id1/`, the core options in
-`Saves/CurrentProfile/config/TyrQuake/`.
+Saves and settings are kept apart from the stock TyrQuake core's, under the name `TyrQuake-Miyoo`:
+Quake's savegames and `config.cfg` in `Saves/CurrentProfile/saves/TyrQuake-Miyoo/id1/` (and
+`hipnotic/`, `rogue/`, ...), the core options and RetroArch settings in
+`Saves/CurrentProfile/config/TyrQuake-Miyoo/`, the Game Switcher states in
+`Saves/CurrentProfile/states/TyrQuake-Miyoo/`.
+
+**Coming from the stock core** (or from a version of this core before 2026-10-20, which used the
+stock core's `TyrQuake` folders): the first time a shortcut starts the game it copies
+`saves/TyrQuake/` (savegames, `config.cfg`) and the states from `states/TyrQuake/` into the new
+folders. The old files stay. The core options are not copied, so this core starts with its own
+defaults. If you start the core some other way first, copy those folders yourself.
 
 ## Game Switcher
 
@@ -71,7 +79,7 @@ Onion's Menu button works as with the emulators:
 - **Resuming** from the Game Switcher, or after turning the console on: the state is loaded.
 
 A state is a Quake savegame, kept by RetroArch as
-`Saves/CurrentProfile/states/TyrQuake/1996 Quake.state.auto`. Resuming from one reloads the level
+`Saves/CurrentProfile/states/TyrQuake-Miyoo/1996 Quake.state.auto`. Resuming from one reloads the level
 (1-2 s, with Quake's "Loading" plaque) and puts everything back as it was: you, the monsters, doors
 and items. Short-lived effects (flying debris, sounds already playing) are not kept.
 
@@ -146,7 +154,7 @@ Resolution and framerate take effect after restarting the game.
 ### RetroArch settings
 
 The release sets three RetroArch settings for this core only, in
-`Saves/CurrentProfile/config/TyrQuake/FPS - Quake Collection (TyrQuake).cfg`:
+`Saves/CurrentProfile/config/TyrQuake-Miyoo/TyrQuake-Miyoo.cfg`:
 
 ```
 audio_sync = "true"
@@ -154,12 +162,9 @@ audio_resampler = "sinc"
 video_refresh_rate = "59.670000"
 ```
 
-It is a *content directory override*: RetroArch reads it for content in a folder of that name,
-and this core's content is the shortcut in `Shortcuts/FPS - Quake Collection (TyrQuake)/`. The
-stock TyrQuake core loads `id1/pak0.pak` and doesn't get it, and a core override of yours
-(`TyrQuake.cfg`, shared by both cores) stays as it is, below this file. To change these
-settings, edit the file, or in RetroArch's quick menu use *Overrides → Save Content Directory
-Overrides*.
+It is a *core override*, read only by this core (the stock core's are in `config/TyrQuake/`).
+It replaces an existing file of that name. To change these settings, edit the file, or in
+RetroArch's quick menu use *Overrides → Save Core Overrides*.
 
 - **Audio Sync** paces the game by the sound; without it RetroArch drops sound that doesn't fit
   its buffer, which crackles.
@@ -195,7 +200,7 @@ Keep RetroArch's *Audio Sync* on (Onion's default). Without it RetroArch drops s
 doesn't fit its buffer, which crackles.
 
 **Performance Log** writes one line per second to `perflog.csv` in the game's save folder
-(`Saves/CurrentProfile/saves/TyrQuake/id1/` for Quake): frame times, frames over the budget,
+(`Saves/CurrentProfile/saves/TyrQuake-Miyoo/id1/` for Quake): frame times, frames over the budget,
 how much sound was handed over, the music buffer, how hard the limiter worked, CPU time, CPU
 clock and temperature. `miyoo/tools/perflog.py` on a PC fetches it over the network and
 summarises it with a chart. Leave it off for normal play.

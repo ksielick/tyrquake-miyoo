@@ -2,7 +2,7 @@
 display_name = "Quake (TyrQuake-Miyoo)"
 authors = "Kevin Shanahan (Tyrann), libretro, TyrQuake-Miyoo"
 supported_extensions = "pak|port"
-corename = "TyrQuake"
+corename = "TyrQuake-Miyoo"
 license = "GPLv2"
 permissions = ""
 display_version = "v0.62-miyoo"

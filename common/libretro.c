@@ -620,9 +620,10 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
 void retro_get_system_info(struct retro_system_info *info)
 {
    memset(info, 0, sizeof(*info));
-   /* TyrQuake-Miyoo keeps the library name, so it shares the player's
-    * saves, config.cfg and core options with the stock core */
-   info->library_name     = "TyrQuake";
+   /* its own name: RetroArch keeps this core's settings, saves and states in
+    * TyrQuake-Miyoo folders, apart from the stock core (whose savegames did
+    * not load back); the shortcut copies the stock core's ones over once */
+   info->library_name     = "TyrQuake-Miyoo";
 #ifndef GIT_VERSION
 #define GIT_VERSION ""
 #endif

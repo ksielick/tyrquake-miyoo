@@ -2,7 +2,7 @@
 
     py -3 miyoo/tools/perflog.py [perflog.csv] [--all] [--keep]
 
-Without a file it fetches //192.168.0.246/Saves/TyrQuake/id1/perflog.csv over SMB into
+Without a file it fetches //192.168.0.246/Saves/TyrQuake-Miyoo/id1/perflog.csv over SMB into
 <workspace>/build/perflog/perflog-<date>.csv and empties the card's copy (--keep: leave it).
 Prints the last session (--all: every session): totals, per-map table, the worst seconds, and
 writes a chart next to the CSV (<name>-<session>.png).
@@ -29,7 +29,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WS = os.path.normpath(os.path.join(HERE, "..", "..", "..", ".."))
-CARD = "//192.168.0.246/Saves/TyrQuake/id1/perflog.csv"
+CARD = "//192.168.0.246/Saves/TyrQuake-Miyoo/id1/perflog.csv"
 
 
 def fetch(keep):

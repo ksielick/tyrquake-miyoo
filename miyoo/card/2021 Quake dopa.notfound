@@ -30,5 +30,16 @@ if [ -n "$INFO_SUM" ] && [ "$INFO_SUM" != "$(cat "$RA_CORES/.${Core}_info.md5" 2
 	echo "$INFO_SUM" > "$RA_CORES/.${Core}_info.md5"
 fi
 
+# TyrQuake-Miyoo keeps its saves and states in TyrQuake-Miyoo folders (since 2026-10-20; the
+# stock core and older versions: TyrQuake). The first time, copy the old savegames, Quake's
+# config.cfg and the Game Switcher states over (the old ones stay). Not the core options: the
+# stock core's would replace this core's defaults.
+SAVES=/mnt/SDCARD/Saves/CurrentProfile
+if [ ! -d "$SAVES/saves/TyrQuake-Miyoo" ] && [ -d "$SAVES/saves/TyrQuake" ]; then
+	mkdir -p "$SAVES/saves/TyrQuake-Miyoo" "$SAVES/states/TyrQuake-Miyoo"
+	cp -r "$SAVES/saves/TyrQuake/." "$SAVES/saves/TyrQuake-Miyoo/"
+	cp "$SAVES/states/TyrQuake/"*.state* "$SAVES/states/TyrQuake-Miyoo/" 2>/dev/null
+fi
+
 # running command line :
 /mnt/SDCARD/Emu/PORTS/launch_retroarch.sh "$GameName" "$Core" "$RomDir" "$RomFile" "$Arguments" "$KillAudioserver" "$PerformanceMode"

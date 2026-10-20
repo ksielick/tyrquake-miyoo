@@ -206,7 +206,7 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 
 ## Installed on the card (2026-10-19, owner asked)
 - Shortcuts (owner asked, 2026-10-20): `miyoo/card/` has `1997 Quake hipnotic`, `1997 Quake rogue`, `2021 Quake dopa` as .notfound (our core, QuakeDir), all shortcuts with GameDir/GameDataFile for Onion's import.sh (it read our RomDir literally and would have hidden 1996 Quake). Installed on the card; the old ones in `Roms/PORTS/Games/TyrQuake-bench/backup-20261020-shortcuts/`. No pack data on the card or the PC yet.
-- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 69294ffb = owner's settings as defaults (640x480, 59.67; TYRQUAKE_MIYOO_MINI) + sound filter + declicker + limiter + load fades (see Sound), before it a38e69e7, 33cb3773, 03a5eeee, 91afb028 =
+- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 7a446a25 = library_name "TyrQuake-Miyoo" (own config/saves/states folders, see "Own name"), before it 69294ffb = owner's settings as defaults (640x480, 59.67; TYRQUAKE_MIYOO_MINI) + sound filter + declicker + limiter + load fades (see Sound), before it a38e69e7, 33cb3773, 03a5eeee, 91afb028 =
   3ace1ed (play log) built with PGO + LTO** (pgo.sh; shots 59/59; before it: 4a500e2b = ee6132b
   PGO + LTO, a81e88ab PGO only), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
   `tyrquake_libretro.so` is untouched.
@@ -609,6 +609,25 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
 - Owner (2026-10-20): with the filter the sound is "much more pleasant and soft".
 - Owner's last play log with core 5125416a (153 s, e1m5/e1m1/start): 59.1 fps avg, 1.2 % of frames over the budget, limiter active in 92 s (lowest 0.31 = -10 dB, median of the per-second minima 0.68), music decoder never behind, 64-70 °C. Play log then turned off on the card (TyrQuake.opt perf_log disabled, the empty perflog.csv deleted).
 
+## Own name: library_name "TyrQuake-Miyoo" (2026-10-20, owner asked, core 7a446a25)
+- Sharing the stock core's folders bought nothing: its savegames don't load back and it has no
+  states. Now RetroArch uses `config/TyrQuake-Miyoo/` (TyrQuake-Miyoo.opt, core override
+  TyrQuake-Miyoo.cfg = the release's `miyoo/card/TyrQuake-Miyoo.cfg`), `saves/TyrQuake-Miyoo/`,
+  `states/TyrQuake-Miyoo/`, `lists/playlists/logs/TyrQuake-Miyoo/`. `.info` corename too.
+- The shortcuts copy `saves/TyrQuake/.` and `states/TyrQuake/*.state*` over once, when
+  `saves/TyrQuake-Miyoo` doesn't exist yet (the old files stay). Not the .opt: the stock core's
+  would replace our defaults (640x480, 59.67). bench_device.sh / perflog.py use the new paths.
+- Card: backup of saves/states/config TyrQuake in `Roms/PORTS/Games/TyrQuake-bench/
+  backup-20261020-rename/saves.tar`; owner's TyrQuake.opt copied to TyrQuake-Miyoo.opt by hand;
+  the "FPS - Quake Collection (TyrQuake).cfg" folder override removed; TyrQuake.cfg/pak0.cfg
+  (stock core) left. Shots 59/59 identical.
+- Launch test as Onion does (`/tmp/cmd_to_run.sh` running launch.sh on the .port from a script
+  in /tmp: a command naming /mnt/SDCARD/Roms is taken as a game, ends SSH and didn't run):
+  migration done, "Core-specific overrides found at .../TyrQuake-Miyoo/TyrQuake-Miyoo.cfg",
+  state auto-loaded from states/TyrQuake-Miyoo (the owner's spot in the game, 640x480),
+  SAVE_STATE_SLOT -1 + QUIT saved it there. The "progs.dat: statement ... globals index out of
+  range" lines at a load are upstream's bytecode check (seen before, harmless).
+
 ## RetroArch settings for this core only; sinc vs nearest (2026-10-20, owner asked)
 - Overrides live in `config/<library_name>/`, and both cores are "TyrQuake", so a core override
   (TyrQuake.cfg) is shared. A content directory override, `config/TyrQuake/<parent folder of
@@ -616,8 +635,8 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   `FPS - Quake Collection (TyrQuake)` (the owner's runtime log is named that too), the stock core's
   is `id1`. Checked with bench `PORT=1 OVERRIDES=1` and a `Test.cfg`: "Content dir-specific
   overrides found ... stacking on top of previous overrides" (after TyrQuake.cfg). The release
-  ships `miyoo/card/FPS - Quake Collection (TyrQuake).cfg` instead of TyrQuake.cfg. Changing
-  library_name instead would move saves, states and options away from the stock core's.
+  shipped `miyoo/card/FPS - Quake Collection (TyrQuake).cfg` for a few hours; replaced by "Own
+  name" below.
 - Bench `DSPTAP=1`: `miyoo/bench/dsp_tap.c` (LD_PRELOAD before libpadsp.so, built into
   `build/tap/`) appends what RetroArch writes to /dev/dsp, i.e. after its resampler, to
   /tmp/tqbench/dsp.raw; with AUDIODUMP=1 the core's own output is next to it. (dlsym pinned to

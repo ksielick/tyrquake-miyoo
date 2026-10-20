@@ -16,6 +16,11 @@ RES=${2:-320x240}
 DEMO=${3:-demo1}
 MAXF=$4
 G="/mnt/SDCARD/Roms/PORTS/Games/Quake Collection (TyrQuake)"
+# the player's saves and options (TyrQuake-Miyoo since 2026-10-20, before: TyrQuake)
+PS=/mnt/SDCARD/Saves/CurrentProfile/saves/TyrQuake-Miyoo/id1
+PO=/mnt/SDCARD/Saves/CurrentProfile/config/TyrQuake-Miyoo/TyrQuake-Miyoo.opt
+[ -d $PS ] || PS=/mnt/SDCARD/Saves/CurrentProfile/saves/TyrQuake/id1
+[ -f $PO ] || PO=/mnt/SDCARD/Saves/CurrentProfile/config/TyrQuake/TyrQuake.opt
 RA=/mnt/SDCARD/RetroArch
 T=/tmp/tqbench
 WATCHDOG=${WATCHDOG:-240}
@@ -57,7 +62,7 @@ fi
 # CFG: extra console commands, ';'-separated (e.g. CFG="r_threads 0"); '\;' stays a ';' (inside an alias)
 # LOAD=s0: load that savegame (copies of the player's saves) instead of a timedemo; use max_frames
 if [ -n "$LOAD" ]; then
-	cp /mnt/SDCARD/Saves/CurrentProfile/saves/TyrQuake/id1/*.sav $T/saves/tqbench/ 2>/dev/null
+	cp $PS/*.sav $T/saves/tqbench/ 2>/dev/null
 	ACT="load $LOAD"
 elif [ "$STATE" = load ]; then
 	ACT=""
@@ -69,9 +74,9 @@ printf 'r_perf %s\n%s\n%s\n' "${PERF:-0}" "$(echo "$CFG" | sed 's/\\;/^/g' | tr 
 	> $T/game/tqbench/autoexec.cfg
 echo "autoexec: $(tr '\n' ';' < $T/game/tqbench/autoexec.cfg)"
 # the player's Quake settings (viewsize etc.), so the scene matches real play
-cp /mnt/SDCARD/Saves/CurrentProfile/saves/TyrQuake/id1/config.cfg $T/saves/tqbench/ 2>/dev/null
+cp $PS/config.cfg $T/saves/tqbench/ 2>/dev/null
 # core options: the player's, with the resolution under test
-grep -v tyrquake_resolution /mnt/SDCARD/Saves/CurrentProfile/config/TyrQuake/TyrQuake.opt > $T/core.opt
+grep -v tyrquake_resolution "$PO" > $T/core.opt
 echo "tyrquake_resolution = \"$RES\"" >> $T/core.opt
 # FPS=60/auto/...: the core framerate instead of the player's (theirs was 40 on 2026-10-19)
 if [ -n "$FPS" ]; then
@@ -111,7 +116,7 @@ ${LAT:+audio_latency = "$LAT"}
 ${RC:+audio_rate_control = "$([ "$RC" = 1 ] && echo true || echo false)"}
 ${RESAMPLER:+audio_resampler = "$RESAMPLER"}
 fps_show = "false"
-# the player's core/game overrides (config/TyrQuake/TyrQuake.cfg) must not apply here
+# the player's core/game overrides (config/TyrQuake-Miyoo/TyrQuake-Miyoo.cfg) must not apply here
 # (OVERRIDES=1: they do, to test them)
 auto_overrides_enable = "$([ "$OVERRIDES" = 1 ] && echo true || echo false)"
 game_specific_options = "false"
