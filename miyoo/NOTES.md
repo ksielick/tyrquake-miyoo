@@ -203,23 +203,23 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
 ## Installed on the card (2026-10-19, owner asked)
-- `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` (md5 26a57e5b, commit 611d543; replaced
-  2026-10-19 by md5 c39cf8a5 = commit cb36289, caches built on both threads; version
-  string; then by md5 43f87cab = commit 1e7f291, savegame fix + lerp on by default; then by md5
-  4e3da96e = commit 00c76b0, save states, with the .info saying savestate = "true"; then by md5
-  fc33ab4d = commit fc14e41, .port as content, `cores/core_info.cache` deleted, shortcut replaced by
-  `miyoo/card/1996 Quake.port`, previous one in workspace `backup/20261019-gameswitcher/`; then
-  by md5 1cec45bf = commit 3f56ebe: resume without console flash, palette on both threads, Q_rand,
-  dither fix; then by md5 a1637818 = commit 47f32a5 (later c3bc85e7 = ee6132b, Slow Frames real-time
-  steps): alias models on both threads, music thread,
-  59.67 fps option, with a test setup: TyrQuake.opt framerate 40 → "59.67" and a new core override
-  `config/TyrQuake/TyrQuake.cfg` (now audio_sync true, audio_resampler sinc, refresh 59.67; before: vsync
-  + audio_latency 96, and first audio_sync
-  false: clicks), video_refresh_rate 59.67;
-  applies to the stock core too); the old TyrQuake.opt is in workspace `backup/20261019-hz/`, revert
-  = restore it and delete TyrQuake.cfg; the shortcut on the card is still the one without the
-  core_info.cache refresh) and `.info` ("Quake (TyrQuake-Miyoo)", also copied to `core_info/`); the stock
+- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 a81e88ab =
+  the core sources of ee6132b (unchanged up to 13c9ecd) built with PGO** (the miyoo/tools/pgo.sh
+  steps), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
   `tyrquake_libretro.so` is untouched.
+- Card settings for the 59.67 Hz test: `Saves/CurrentProfile/config/TyrQuake/TyrQuake.opt`
+  tyrquake_framerate 40 → "59.67" (Slow Frames: default real time); core override
+  `config/TyrQuake/TyrQuake.cfg`: audio_sync true, audio_resampler sinc, video_refresh_rate 59.67
+  (applies to the stock core too; tried before: vsync + audio_latency 96, and audio_sync false →
+  clicks). Old TyrQuake.opt in workspace `backup/20261019-hz/`; revert = restore it and delete
+  TyrQuake.cfg.
+- The shortcut on the card is still the one without the core_info.cache refresh.
+- History of the core file: md5 26a57e5b (611d543) → c39cf8a5 (cb36289, caches on both threads)
+  → 43f87cab (1e7f291, savegame fix, lerp on) → 4e3da96e (00c76b0, save states) → fc33ab4d
+  (fc14e41, .port as content; `cores/core_info.cache` deleted; shortcut replaced by
+  `miyoo/card/1996 Quake.port`, previous in `backup/20261019-gameswitcher/`) → 1cec45bf (3f56ebe,
+  resume fix, palette on both threads, Q_rand, dither fix) → a1637818 (47f32a5, alias models on
+  both threads, music thread, 59.67 option) → c3bc85e7 (ee6132b, Slow Frames) → a81e88ab (PGO).
 - `Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port`: `Core="tyrquake_miyoo"`
   (was `tyrquake`; original in the workspace `backup/20261019-before-install/`). Revert = that line.
 - library_name stays "TyrQuake": same saves/config.cfg/core options (TyrQuake.opt) as the stock core.
@@ -481,6 +481,7 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
 15.8-17.2: to bring p90 under 16.76 ms (heaviest first):
 - Done since: music decoding on its own thread, 59.67 fps option, Slow Frames real-time steps
   (no clicks when a frame is late), bench SYNC/FPS/VSYNC/REFRESH/LAT/RC/RESAMPLER, CPU per frame.
+- Done: 1. PGO (~3 %, installed 2026-10-20).
 - Pacing: with audio_sync on the frames reach the screen in bursts (12/18/20 ms) whatever we do;
   vsync without audio_sync is even (16.76) but drops samples. Not solved; would need a frontend
   whose audio rate control works with Onion's OSS (or a standalone port).
