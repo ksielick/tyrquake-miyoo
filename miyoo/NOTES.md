@@ -32,7 +32,8 @@ the level. Worth reporting upstream.
 - `miyoo/card/` — files as installed on the SD card (`.info`, `1996 Quake.port` shortcut).
 - `miyoo/README.md` — user-facing README (install, Game Switcher, settings).
 - GitHub: private https://github.com/ksielick/tyrquake-miyoo, remote `miyoo`. On GitHub the branch
-  is still `miyoo` (pushed up to 344cd32) until the owner has it renamed there too.
+  is still `miyoo` (local `retroarch` pushed there up to eec0041 on 2026-10-20:
+  `git push miyoo refs/heads/retroarch:refs/heads/miyoo`) until the owner has it renamed.
 - Tooling: `py -3` for the Python tools (not `-I`: numpy/PIL are in the user site-packages);
   `mssh` returns its output filter's exit code (1 when the remote prints nothing) → `|| true` in
   scripts; Git Bash needs `MSYS2_ARG_CONV_EXCL` to pass device paths like `/tmp/...` unchanged.
