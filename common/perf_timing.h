@@ -116,6 +116,9 @@ void perf_timing_frame(double interval_usec, double busy_usec, double audio_wait
 /* Music decoder ring fill in ms, sampled each frame (play log: the minimum). */
 void perf_timing_bgm_fill(int ms);
 
+/* The sound limiter's lowest gain in a mix call (play log: the minimum). */
+void perf_timing_limiter(float gain);
+
 /*
  * Register the r_perf cvar with the cvar system.  Must
  * be called once before any retro_run can fire.  Safe to

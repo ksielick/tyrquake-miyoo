@@ -14,7 +14,9 @@ realsteps = frames that got a longer game step (core option Slow Frames); audio_
 frame blocked in audio_batch_cb (spare time when paced by the sound); samples_s = sound handed
 to RetroArch per second; bgm_dry = frames the music decoder had nothing ready; bgm_min_ms = the
 least music decoded ahead; mix_short = mixer chunks where the music ran out (a gap = a click);
-clip = sample frames where music + effects went over full scale and were clipped (clicks);
+clip = sample frames where the mix went over full scale (before the limiter: what it turned
+down; before 2026-10-20 11:30 only music + effects, hard-clipped); lim_min = the limiter's
+lowest gain in the second (1 = untouched);
 cpu_main/cpu_proc = CPU ms per frame (main thread / whole RetroArch); the r_perf sections in ms
 per frame; mhz, temp (C).
 """
@@ -109,8 +111,15 @@ def summary(head, rows):
              sum(r["mix_short"] for r in rows),
              ("%d ms" % min(fills)) if fills else "- (no music)"))
     clip = [r for r in rows if r.get("clip", 0)]
-    print("music + effects clipped: %d sample frames in %d of %d seconds"
+    print("mix over full scale (before the limiter): %d sample frames in %d of %d seconds"
           % (sum(r["clip"] for r in clip), len(clip), secs))
+    if "lim_min" in rows[0]:
+        import math
+        lim = sorted(r["lim_min"] for r in rows)
+        low = [r for r in rows if r["lim_min"] < 0.99]
+        print("limiter: active in %d seconds, lowest gain %.2f (%.1f dB), median of those %.2f"
+              % (len(low), lim[0], 20 * math.log10(max(lim[0], 1e-3)),
+                 sorted(r["lim_min"] for r in low)[len(low) // 2] if low else 1.0))
     mhz = [r["mhz"] for r in rows if r["mhz"] > 0]
     temp = [r["temp"] for r in rows if r["temp"] > 0]
     if mhz:

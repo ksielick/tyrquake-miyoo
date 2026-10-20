@@ -64,69 +64,102 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 static portable_samplepair_t paintbuffer[PAINTBUFFER_SIZE];
 
 /*
- * Limiter for music + effects (int16 lane).  The music is summed at unity
- * onto the effects; a loud fight with the music on went over full scale
- * for up to a third of the samples in a second, and the hard clip of the
- * transfer was heard as knocks.  Instead the whole mix is turned down
- * smoothly where it would clip: per 32-frame block the gain that keeps the
- * block's peak at full scale; the gain moves linearly within a block
- * towards the lower of this and the next block's (so it is already down
- * when a peak arrives) and comes back to unity over ~150 ms.  Below full
- * scale nothing changes.
+ * Look-ahead limiter on the whole mix (int16 lane).  The music is summed at
+ * unity onto the effects and several loud effects add up too: a fight went
+ * over full scale for up to a third of a second's samples, and the hard clip
+ * was heard as knocks.  A first limiter that turned the gain down within
+ * 0.7 ms (and at once at a chunk start) still crackled on loud monsters.
+ *
+ * Now the output is delayed by LIM_D frames (5.3 ms at 48 kHz) so the gain
+ * sees every peak that far ahead: per 64-frame block the gain that keeps the
+ * block's peak at full scale; the gain falls in a straight line to reach
+ * each coming block's value by the time that block plays (over up to 4
+ * blocks), never above the current or next block's value, and comes back
+ * to unity over ~150 ms.  Below full scale it changes nothing but the
+ * delay.  lim_buf keeps the delayed frames between calls.
  */
-#define	LIM_BLOCK	32
+#define	LIM_B		64
+#define	LIM_W		4
+#define	LIM_D		(LIM_B * LIM_W)
 #define	LIM_FULL	(32767 << 8)
-static float lim_gain = 1.0f;	/* at the end of the last chunk */
-static float lim_block_gain[PAINTBUFFER_SIZE / LIM_BLOCK + 1];
+static portable_samplepair_t lim_buf[PAINTBUFFER_SIZE + LIM_D];
+static float lim_req[(PAINTBUFFER_SIZE + LIM_D) / LIM_B + 2];
+static float lim_gain = 1.0f;	/* at the end of the last output */
 
-static void S_LimitChunk (int count)
+static void S_Limit (int count)
 {
-	int blocks = (count + LIM_BLOCK - 1) / LIM_BLOCK;
-	int b, i, over = 0;
-	float g = lim_gain, rel;
+	int total = LIM_D + count;
+	int nb = (total + LIM_B - 1) / LIM_B;
+	int b, i, m, over = 0, all_unity = 1;
+	float g = lim_gain, g_min = 1.0f, rel;
 
-	for (b = 0; b < blocks; b++)
+	memcpy(lim_buf + LIM_D, paintbuffer, count * sizeof(paintbuffer[0]));
+	for (b = 0; b < nb; b++)
 	{
-		int end = (b + 1) * LIM_BLOCK < count ? (b + 1) * LIM_BLOCK : count;
+		int end = (b + 1) * LIM_B < total ? (b + 1) * LIM_B : total;
 		int peak = LIM_FULL;
 
-		for (i = b * LIM_BLOCK; i < end; i++)
+		for (i = b * LIM_B; i < end; i++)
 		{
-			int l = abs(paintbuffer[i].left), r = abs(paintbuffer[i].right);
+			int l = abs(lim_buf[i].left), r = abs(lim_buf[i].right);
 			if (l > peak)
 				peak = l;
 			if (r > peak)
 				peak = r;
+			if (i >= LIM_D && (l > LIM_FULL || r > LIM_FULL))
+				over++;		/* new frames that would have clipped */
 		}
-		lim_block_gain[b] = (float) LIM_FULL / (float) peak;
-		over |= peak > LIM_FULL;
+		lim_req[b] = (float) LIM_FULL / (float) peak;
+		if (peak > LIM_FULL)
+			all_unity = 0;
 	}
-	if (!over && g >= 1.0f)
-		return;
+	lim_req[nb] = 1.0f;
+	if (over)
+		perf_timing_counter_add(PERF_COUNTER_MIX_CLIP, over);
 
-	rel = (float) LIM_BLOCK / (0.15f * (float) shm->speed);
-	if (g > lim_block_gain[0])
-		g = lim_block_gain[0];
-	for (b = 0; b < blocks; b++)
+	if (all_unity && g >= 1.0f)
+		memcpy(paintbuffer, lim_buf, count * sizeof(paintbuffer[0]));
+	else
 	{
-		int start = b * LIM_BLOCK;
-		int end = start + LIM_BLOCK < count ? start + LIM_BLOCK : count;
-		float target = g + (1.0f - g) * rel, step;
-
-		if (target > lim_block_gain[b])
-			target = lim_block_gain[b];
-		if (b + 1 < blocks && target > lim_block_gain[b + 1])
-			target = lim_block_gain[b + 1];
-		step = (target - g) / (float) (end - start);
-		for (i = start; i < end; i++)
+		rel = (float) LIM_B / (0.15f * (float) shm->speed);
+		if (g > lim_req[0])	/* (the last call's limits already cover it) */
+			g = lim_req[0];
+		for (b = 0; b * LIM_B < count; b++)
 		{
-			g += step;
-			paintbuffer[i].left = (int) ((float) paintbuffer[i].left * g);
-			paintbuffer[i].right = (int) ((float) paintbuffer[i].right * g);
+			int start = b * LIM_B;
+			int end = start + LIM_B < count ? start + LIM_B : count;
+			float gend = g + (1.0f - g) * rel, step;
+
+			if (gend > 1.0f)
+				gend = 1.0f;
+			/* the block now playing and the next one: hard limits */
+			if (gend > lim_req[b])
+				gend = lim_req[b];
+			if (b + 1 < nb && gend > lim_req[b + 1])
+				gend = lim_req[b + 1];
+			/* further ones: a straight line reaching each by its block */
+			for (m = 2; m <= LIM_W && b + m < nb; m++)
+				if (lim_req[b + m] < g)
+				{
+					float t = g - (g - lim_req[b + m]) / (float) m;
+					if (gend > t)
+						gend = t;
+				}
+			step = (gend - g) / (float) (end - start);
+			for (i = start; i < end; i++)
+			{
+				g += step;
+				paintbuffer[i].left = (int) ((float) lim_buf[i].left * g);
+				paintbuffer[i].right = (int) ((float) lim_buf[i].right * g);
+			}
+			g = gend;
+			if (g < g_min)
+				g_min = g;
 		}
-		g = target;
+		lim_gain = g > 0.9999f ? 1.0f : g;
 	}
-	lim_gain = g > 0.9999f ? 1.0f : g;
+	perf_timing_limiter(g_min);
+	memmove(lim_buf, lim_buf + count, LIM_D * sizeof(lim_buf[0]));
 }
 static int *snd_p, snd_linear_count;
 short *snd_out;
@@ -384,8 +417,9 @@ void S_PaintChannels (int samples_to_paint)
 		/* Only ahead of the music: on its own the SFX mix is
 		 * clamped to the same bounds by the transfer (the int16
 		 * blast saturates, the float blast clamps), and another
-		 * pass over the chunk buys nothing */
-		if (s_rawavail > 0)
+		 * pass over the chunk buys nothing.  Float lane only: the
+		 * int16 lane limits the whole sum instead (S_Limit). */
+		if (s_rawavail > 0 && s_float_output && snd_float_buffer)
 			for (i = 0; i < chunk; i++)
 			{
 				paintbuffer[i].left = CLAMP(-(32768 << 8), paintbuffer[i].left, 32767 << 8);
@@ -432,7 +466,6 @@ void S_PaintChannels (int samples_to_paint)
 			{
 				/* copy from the streaming sound source */
 				int bgm_count = (s_rawavail < chunk) ? s_rawavail : chunk;
-				int clipped = 0;	/* frames the sum will clip (play log) */
 
 				if (bgm_count < chunk)	/* the music ran out here: a gap (play log) */
 					perf_timing_counter_add(PERF_COUNTER_MIX_SHORT, 1);
@@ -440,27 +473,20 @@ void S_PaintChannels (int samples_to_paint)
 				for (i = 0; i < bgm_count; i++)
 				{
 					int s = (s_rawhead + i) & (MAX_RAW_SAMPLES - 1);
-					int l, r;
-					/* Summed at unity onto the already-clamped SFX; the
-					 * final transfer clamps the total, so a loud SFX bed
-					 * plus loud music clips at 0 dBFS.  (The "6 dB" the
-					 * upstream comment mentioned is not applied here.) */
-					l = paintbuffer[i].left  += s_rawsamples[s].left;
-					r = paintbuffer[i].right += s_rawsamples[s].right;
-					clipped += (l > (32767 << 8)) | (l < -(32768 << 8)) |
-						   (r > (32767 << 8)) | (r < -(32768 << 8));
+					/* Summed at unity onto the SFX; S_Limit keeps the
+					 * total under full scale.  (The "6 dB" the upstream
+					 * comment mentioned is not applied here.) */
+					paintbuffer[i].left  += s_rawsamples[s].left;
+					paintbuffer[i].right += s_rawsamples[s].right;
 				}
-				if (clipped)
-					perf_timing_counter_add(PERF_COUNTER_MIX_CLIP, clipped);
 
 				s_rawhead   = (s_rawhead + bgm_count) & (MAX_RAW_SAMPLES - 1);
 				s_rawavail -= bgm_count;
-
-#ifndef NO_SND_LIMITER	/* (an A/B build without it) */
-				S_LimitChunk(chunk);
-#endif
 			}
 
+#ifndef NO_SND_LIMITER	/* (an A/B build without it) */
+			S_Limit(chunk);
+#endif
 			S_TransferStereo16(painted, chunk);
 		}
 		painted += chunk;

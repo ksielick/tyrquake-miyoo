@@ -204,7 +204,7 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
 ## Installed on the card (2026-10-19, owner asked)
-- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 03a5eeee = sound limiter + load fades (see Sound), before it 91afb028 =
+- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 33cb3773 = look-ahead limiter + load fades (see Sound), before it 03a5eeee, 91afb028 =
   3ace1ed (play log) built with PGO + LTO** (pgo.sh; shots 59/59; before it: 4a500e2b = ee6132b
   PGO + LTO, a81e88ab PGO only), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
   `tyrquake_libretro.so` is untouched.
@@ -551,6 +551,20 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   "source locations ... have changed"): rerun pgo.sh, or for a release rebuild with an old
   profile add `-Wno-error=coverage-mismatch` (changed functions then lose their profile).
 - Installed 2026-10-20: core 03a5eeee (PGO+LTO, shots 59/59); log and music still on.
+- Owner: save/load fixed; still crackles when monsters make sounds. Cause: with music on the
+  mixer first hard-clamped the effects alone (before the music and the limiter), and the
+  limiter's 0.7 ms attack (instant at a chunk start) was itself audible.
+- Look-ahead limiter (S_Limit, replaces S_LimitChunk): runs on every int16 mix (music or not;
+  the effects-only pre-clamp is now float-lane only), output delayed 256 frames (5.3 ms),
+  64-frame blocks, gain falls in a straight line over up to 4 blocks to meet each coming peak,
+  never above the current/next block's limit, ~150 ms release. Play log column `lim_min`.
+- Measured (demo1, owner's volume 0.7): **the effects alone go up to 5x full scale** (bgmvolume
+  0: limiter down to 0.20 = -14 dB, median of the per-second minima 0.57); music adds little;
+  volume 0.35 + bgmvolume 0.5: -8 dB at worst, 7 of 16 s. Without the limiter 10.9 % of the
+  frames sat at full scale (hard clip); with it 0.04 %, largest neighbour jump 37 136 → 19 403.
+- WAVs for the owner: `<ws>/build/perflog/demo1_A_hard_clip.wav` (no limiter) and
+  `demo1_B_limiter.wav` (same demo, look-ahead limiter).
+- Installed 2026-10-20: core 33cb3773 (PGO+LTO, shots 59/59).
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and

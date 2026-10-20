@@ -69,6 +69,7 @@ static struct {
    double interval_max, busy_sum, busy_max, wait_sum;
    uint32_t busy_hist[PLAY_BINS];
    int bgm_min_ms;
+   float lim_min;
    unsigned long long samples_start, samples_now;
    char map[32];
 } play;
@@ -145,6 +146,7 @@ play_reset(void)
    memset(&play, 0, sizeof(play));
    play.samples_start = play.samples_now = s;
    play.bgm_min_ms = -1;
+   play.lim_min = 1.0f;
 #ifdef __linux__
    play_cpu_proc = cpu_usec(RUSAGE_SELF);
    play_cpu_main = cpu_usec(RUSAGE_THREAD);
@@ -184,7 +186,7 @@ perf_timing_set_log(const char *path, double fps)
     * percentile, sound, music, CPU (ms per frame), the r_perf sections
     * (ms per frame), CPU clock and temperature */
    fprintf(play_log, "t,map,frames,fps,late20,late25,interval_max,busy_avg,busy_p90,busy_max,over,"
-           "realsteps,audio_wait,samples_s,bgm_dry,bgm_min_ms,mix_short,clip,cpu_main,cpu_proc,"
+           "realsteps,audio_wait,samples_s,bgm_dry,bgm_min_ms,mix_short,clip,lim_min,cpu_main,cpu_proc,"
            "render,view3d,hud2d,edges,ents,vidupd,audio,bgm,audio_cb,mhz,temp\n");
    fflush(play_log);
    play_t0_usec = 0.0;
@@ -229,6 +231,13 @@ perf_timing_frame(double interval_usec, double busy_usec, double audio_wait_usec
 }
 
 void
+perf_timing_limiter(float gain)
+{
+   if (play_log && gain < play.lim_min)
+      play.lim_min = gain;
+}
+
+void
 perf_timing_bgm_fill(int ms)
 {
    if (play_log && (play.bgm_min_ms < 0 || ms < play.bgm_min_ms))
@@ -269,7 +278,7 @@ play_write(double now, double window_elapsed, uint32_t fc)
    cpu_main = (cpu_usec(RUSAGE_THREAD) - play_cpu_main) / 1000.0 / n;
 #endif
 #define MS(s) (section_accum_usec[PERF_SECTION_##s] / 1000.0 / (double)fc)
-   fprintf(play_log, "%.1f,%s,%u,%.2f,%u,%u,%.1f,%.2f,%.2f,%.1f,%u,%u,%.2f,%.0f,%u,%d,%u,%u,%.2f,%.2f,"
+   fprintf(play_log, "%.1f,%s,%u,%.2f,%u,%u,%.1f,%.2f,%.2f,%.1f,%u,%u,%.2f,%.0f,%u,%d,%u,%u,%.3f,%.2f,%.2f,"
            "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%ld,%.1f\n",
            (now - play_t0_usec) / 1000000.0, play.map, n, n / secs, play.late20, play.late25,
            play.interval_max / 1000.0, play.busy_sum / 1000.0 / n, p90, play.busy_max / 1000.0,
@@ -277,7 +286,7 @@ play_write(double now, double window_elapsed, uint32_t fc)
            (play.samples_now - play.samples_start) / secs,
            (unsigned)counter_accum[PERF_COUNTER_BGM_DRY], play.bgm_min_ms,
            (unsigned)counter_accum[PERF_COUNTER_MIX_SHORT],
-           (unsigned)counter_accum[PERF_COUNTER_MIX_CLIP], cpu_main, cpu_proc,
+           (unsigned)counter_accum[PERF_COUNTER_MIX_CLIP], play.lim_min, cpu_main, cpu_proc,
            MS(RENDERVIEW), MS(HOST_RV), MS(HOST_2D), MS(SW_EDGEDRAW), MS(SW_ENTS), MS(SW_VIDUPD),
            MS(AUDIO), MS(AUDIO_BGM), MS(AUDIO_CB),
            read_sys("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq") / 1000,
