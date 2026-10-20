@@ -603,6 +603,7 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
 - Cost (PGO+LTO, PERF=1 audio section, demo1 with music, 2 rounds): 1.46-1.48 → 1.51 ms per
   frame (~0.04 ms); whole-frame timedemo within noise (12.67-12.87 vs 12.69-12.75 ms).
 - Installed 2026-10-20: core 5125416a (PGO+LTO, shots 59/59).
+- Owner (2026-10-20): with the filter the sound is "much more pleasant and soft".
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
