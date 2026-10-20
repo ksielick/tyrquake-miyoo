@@ -2251,22 +2251,43 @@ void D_EndDirectRect(int x, int y, int w, int h)
  * not the async push model that
  * RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK provides).
  */
-/* audio_batch_cb, timed for r_perf (RetroArch's resampler and driver) */
+/* audio_batch_cb, timed for r_perf (RetroArch's resampler and driver).
+ * TQ_AUDIO_DUMP=<file> (bench only): also append what is pushed, raw
+ * int16 stereo, for checking the sound offline (miyoo/tools/audio_check.py). */
 static size_t audio_batch_timed(const int16_t *data, size_t frames)
 {
+   static FILE *dump;
+   static bool dump_checked;
    size_t n;
    double t0 = perf_timing_now_usec();
+
+   if (!dump_checked)
+   {
+      const char *path = getenv("TQ_AUDIO_DUMP");
+      dump_checked = true;
+      if (path && *path)
+         dump = fopen(path, "wb");
+   }
    perf_timing_section_begin(PERF_SECTION_AUDIO_CB);
    n = audio_batch_cb(data, frames);
    perf_timing_section_end(PERF_SECTION_AUDIO_CB);
    audio_push_usec += perf_timing_now_usec() - t0;
+   if (dump)
+   {
+      fwrite(data, 4, n, dump);
+      fflush(dump);
+   }
    return n;
 }
 
+static bool audio_stalled, audio_fade_in;	/* S_StallBegin / S_StallEnd */
+static double audio_stalled_usec;
+static void audio_mix(void);
+static void audio_ramp(int start, int n, float g0, float g1);
+static void audio_push(void);
+
 static void audio_step(void)
 {
-   unsigned audio_frames_remaining;
-   int16_t *audio_out_ptr;
    int      av_flags = RETRO_AV_ENABLE_VIDEO | RETRO_AV_ENABLE_AUDIO;
    qboolean push_audio;
 
@@ -2316,13 +2337,38 @@ static void audio_step(void)
       audio_frame_acc -= n;
    }
 
-   /* Mix.  S_Update does the spatialization /
-    * volume falloff for the listener position; the
-    * BGM and CD updaters feed raw streaming samples
-    * into the same paintbuffer.  S_Update_ at the
-    * tail of S_Update writes exactly samples_per_
-    * frame stereo frames into shm->buffer ==
-    * audio_out_buffer. */
+   audio_mix();
+
+   if (!push_audio)
+      return;
+
+   if (audio_stalled)
+   {
+      /* a load in progress (S_StallBegin): silence, as the engine's sound
+       * is cut there anyway; give up after ~5 s in case no end comes */
+      audio_ramp(0, shm ? shm->samples_per_frame : 0, 0.0f, 0.0f);
+      audio_stalled_usec += frame_step * 1000000.0;
+      if (audio_stalled_usec > 5000000.0)
+         S_StallEnd();
+   }
+   else if (audio_fade_in && shm)
+   {
+      int n = audio_samplerate / 100;	/* 10 ms back up */
+      if (n > shm->samples_per_frame)
+         n = shm->samples_per_frame;
+      audio_ramp(0, n, 0.0f, 1.0f);
+      audio_fade_in = false;
+   }
+   audio_push();
+}
+
+/* Mix.  S_Update does the spatialization / volume falloff for the
+ * listener position; the BGM and CD updaters feed raw streaming
+ * samples into the same paintbuffer.  S_Update_ at the tail of
+ * S_Update writes exactly samples_per_frame stereo frames into
+ * shm->buffer == audio_out_buffer. */
+static void audio_mix(void)
+{
    perf_timing_section_begin(PERF_SECTION_AUDIO_BGM);
    BGM_Update();
    perf_timing_section_end(PERF_SECTION_AUDIO_BGM);
@@ -2331,9 +2377,66 @@ static void audio_step(void)
    else
       S_Update(vec3_origin, vec3_origin, vec3_origin, vec3_origin);
    CDAudio_Update();
+}
 
-   if (!push_audio)
+/* Scale stereo frames [start, start + n) of the output buffer by a gain
+ * going linearly from g0 to g1 */
+static void audio_ramp(int start, int n, float g0, float g1)
+{
+   int i;
+   for (i = 0; i < n; i++)
+   {
+      float g = g0 + (g1 - g0) * (float)(i + 1) / (float)n;
+      int j = (start + i) * 2;
+      if (use_float_output)
+      {
+         audio_out_buffer_f[j]     *= g;
+         audio_out_buffer_f[j + 1] *= g;
+      }
+      else
+      {
+         audio_out_buffer[j]     = (int16_t)(audio_out_buffer[j] * g);
+         audio_out_buffer[j + 1] = (int16_t)(audio_out_buffer[j + 1] * g);
+      }
+   }
+}
+
+/*
+ * A load or a save holds the frame for 70-600 ms (the card): RetroArch's
+ * ~64 ms of queued sound runs out and the music stopped mid-wave, which
+ * was heard as a knock.  Before such a stall the core mixes and hands over
+ * 30 ms more sound fading to silence, pushes silence while it lasts
+ * (between the loading plaque and signon), and fades back in over 10 ms.
+ */
+void S_StallBegin(void)
+{
+   int n;
+
+   if (audio_stalled || !shm || !audio_batch_cb || run_frames < 2)
       return;
+   audio_stalled = true;
+   audio_stalled_usec = 0.0;
+   n = audio_samplerate * 3 / 100;
+   if (n > AUDIO_BUFFER_SIZE / 2)
+      n = AUDIO_BUFFER_SIZE / 2;
+   shm->samples_per_frame = n;
+   audio_mix();
+   audio_ramp(0, n, 1.0f, 0.0f);
+   audio_push();
+}
+
+void S_StallEnd(void)
+{
+   if (!audio_stalled)
+      return;
+   audio_stalled = false;
+   audio_fade_in = true;
+}
+
+static void audio_push(void)
+{
+   unsigned audio_frames_remaining;
+   int16_t *audio_out_ptr;
 
    /* Push.  At very low framerates one video frame's
     * worth of audio can exceed the frontend's

@@ -624,6 +624,7 @@ SCR_BeginLoadingPlaque
 */
 void SCR_BeginLoadingPlaque(void)
 {
+   S_StallBegin();	/* fade out before the effects are cut and the load holds the frame */
    S_StopAllSounds(true);
 
    if (cls.state != ca_active)
@@ -671,6 +672,7 @@ SCR_EndLoadingPlaque
 */
 void SCR_EndLoadingPlaque(void)
 {
+   S_StallEnd();
    scr_disabled_for_loading = false;
    scr_fullupdate = 0;
    Con_ClearNotify();

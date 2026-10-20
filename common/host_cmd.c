@@ -32,6 +32,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "screen.h"
 #include "server.h"
+#include "sound.h"
 #include "sys.h"
 #include "world.h"
 #include "zone.h"
@@ -603,8 +604,10 @@ static void Host_Savegame_f(void)
    COM_DefaultExtension(name, sizeof(name), ".sav");
 
    Con_Printf("Saving game to %s...\n", name);
+   S_StallBegin();	/* writing to the card holds the frame */
    if (Host_WriteSavegame(name))
       Con_Printf("done.\n");
+   S_StallEnd();
 }
 
 
@@ -642,6 +645,7 @@ void Host_Loadgame_f(void)
    /* been used.  The menu calls it before stuffing loadgame command */
    /*      SCR_BeginLoadingPlaque(); */
 
+   S_StallBegin();	/* "load" from the console: no plaque; ends at signon */
    Host_ReadSavegame(name);
 }
 

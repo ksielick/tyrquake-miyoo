@@ -62,6 +62,72 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define	PAINTBUFFER_SIZE	16384
 static portable_samplepair_t paintbuffer[PAINTBUFFER_SIZE];
+
+/*
+ * Limiter for music + effects (int16 lane).  The music is summed at unity
+ * onto the effects; a loud fight with the music on went over full scale
+ * for up to a third of the samples in a second, and the hard clip of the
+ * transfer was heard as knocks.  Instead the whole mix is turned down
+ * smoothly where it would clip: per 32-frame block the gain that keeps the
+ * block's peak at full scale; the gain moves linearly within a block
+ * towards the lower of this and the next block's (so it is already down
+ * when a peak arrives) and comes back to unity over ~150 ms.  Below full
+ * scale nothing changes.
+ */
+#define	LIM_BLOCK	32
+#define	LIM_FULL	(32767 << 8)
+static float lim_gain = 1.0f;	/* at the end of the last chunk */
+static float lim_block_gain[PAINTBUFFER_SIZE / LIM_BLOCK + 1];
+
+static void S_LimitChunk (int count)
+{
+	int blocks = (count + LIM_BLOCK - 1) / LIM_BLOCK;
+	int b, i, over = 0;
+	float g = lim_gain, rel;
+
+	for (b = 0; b < blocks; b++)
+	{
+		int end = (b + 1) * LIM_BLOCK < count ? (b + 1) * LIM_BLOCK : count;
+		int peak = LIM_FULL;
+
+		for (i = b * LIM_BLOCK; i < end; i++)
+		{
+			int l = abs(paintbuffer[i].left), r = abs(paintbuffer[i].right);
+			if (l > peak)
+				peak = l;
+			if (r > peak)
+				peak = r;
+		}
+		lim_block_gain[b] = (float) LIM_FULL / (float) peak;
+		over |= peak > LIM_FULL;
+	}
+	if (!over && g >= 1.0f)
+		return;
+
+	rel = (float) LIM_BLOCK / (0.15f * (float) shm->speed);
+	if (g > lim_block_gain[0])
+		g = lim_block_gain[0];
+	for (b = 0; b < blocks; b++)
+	{
+		int start = b * LIM_BLOCK;
+		int end = start + LIM_BLOCK < count ? start + LIM_BLOCK : count;
+		float target = g + (1.0f - g) * rel, step;
+
+		if (target > lim_block_gain[b])
+			target = lim_block_gain[b];
+		if (b + 1 < blocks && target > lim_block_gain[b + 1])
+			target = lim_block_gain[b + 1];
+		step = (target - g) / (float) (end - start);
+		for (i = start; i < end; i++)
+		{
+			g += step;
+			paintbuffer[i].left = (int) ((float) paintbuffer[i].left * g);
+			paintbuffer[i].right = (int) ((float) paintbuffer[i].right * g);
+		}
+		g = target;
+	}
+	lim_gain = g > 0.9999f ? 1.0f : g;
+}
 static int *snd_p, snd_linear_count;
 short *snd_out;
 
@@ -389,6 +455,10 @@ void S_PaintChannels (int samples_to_paint)
 
 				s_rawhead   = (s_rawhead + bgm_count) & (MAX_RAW_SAMPLES - 1);
 				s_rawavail -= bgm_count;
+
+#ifndef NO_SND_LIMITER	/* (an A/B build without it) */
+				S_LimitChunk(chunk);
+#endif
 			}
 
 			S_TransferStereo16(painted, chunk);

@@ -204,7 +204,7 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
 ## Installed on the card (2026-10-19, owner asked)
-- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 91afb028 =
+- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 03a5eeee = sound limiter + load fades (see Sound), before it 91afb028 =
   3ace1ed (play log) built with PGO + LTO** (pgo.sh; shots 59/59; before it: 4a500e2b = ee6132b
   PGO + LTO, a81e88ab PGO only), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
   `tyrquake_libretro.so` is untouched.
@@ -524,6 +524,33 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     (already clamped) effects and hard-clips the sum (snd_mix.c): the likely knocks.
   - glibc: with _GNU_SOURCE, fscanf/strtol bind __isoc23_* (2.38): perf_timing.c parses sysfs
     numbers by hand.
+- Owner's play log (251 s, e1m4/e1m5, core 91afb028): 59.0 fps avg; clipping in 124 s, worst
+  ~7900 sample frames/s (113-124 s, grenade fight); music decoder never behind. Knocks at
+  save/load/level change: one frame held 87 / 207 / 618 ms → that second's sound 44 831 /
+  34 063 / 19 021 samples: RetroArch's ~64 ms ran out, the music stopped mid-wave.
+
+## Sound: limiter and fades around loads (2026-10-20, owner asked)
+- snd_mix.c S_LimitChunk (int16 lane, when music is mixed): per 32-frame block the gain that
+  keeps the peak at full scale; the gain ramps within a block to the lower of this and the next
+  block's (no overshoot), back to unity over ~150 ms. A/B demo1 (same code, `-DNO_SND_LIMITER`,
+  fixed steps, bgmvolume 1): frames at full scale 55 914 (7.1 %) → 347 (0.04 %, peaks limited to
+  exactly full scale); largest neighbour jumps 39 337 → 28 596 (at the same times: explosion
+  onsets in the sounds themselves). The play log's `clip` still counts what would have clipped
+  before the limiter.
+- libretro.c S_StallBegin/S_StallEnd (sound.h): before a stall the core mixes 30 ms more and
+  fades it to silence, pushes silence while stalled, fades back in over 10 ms; gives up after
+  ~5 s. Called by SCR_BeginLoadingPlaque (before S_StopAllSounds) / SCR_EndLoadingPlaque
+  (signon), around Host_WriteSavegame, and by console "load". Dump at a load: level before the
+  silence 3445 → 962 → 562 → 73 (5 ms RMS steps), 14 right after it.
+- bench `AUDIODUMP=1`: the core appends what it pushes (raw int16 stereo, env TQ_AUDIO_DUMP) to
+  /tmp/tqbench/audio.raw; `py -3 miyoo/tools/audio_check.py <raw>`: full-scale frames, biggest
+  jumps, silent stretches with the level at their edges. bench CFG: `\;` = a ';' kept inside an
+  alias. Long `wait` alias chains in the autoexec overflow Quake's 8 KB command buffer at
+  start-up (crash 139), so a save in a bench wasn't tested; the save path is the same fade.
+- A stale PGO profile after a code change is an error by default (`-Werror=coverage-mismatch`,
+  "source locations ... have changed"): rerun pgo.sh, or for a release rebuild with an old
+  profile add `-Wno-error=coverage-mismatch` (changed functions then lose their profile).
+- Installed 2026-10-20: core 03a5eeee (PGO+LTO, shots 59/59); log and music still on.
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and

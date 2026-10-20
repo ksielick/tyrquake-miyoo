@@ -54,7 +54,7 @@ fi
 # SYNC=1: audio_sync on as in play (paced by the sound, ~60 fps): compare "timedemo cpu"
 # VSYNC=1: video_vsync on; REFRESH=59.67: RetroArch's video_refresh_rate (Onion: 60); LAT=128: audio_latency (Onion: 64); RC=0: no audio rate control; RESAMPLER=sinc/cc/nearest
 # PGO=1: a -fprofile-generate core writes its profile under /tmp/pgo (see NOTES, PGO)
-# CFG: extra console commands, ';'-separated (e.g. CFG="r_threads 0")
+# CFG: extra console commands, ';'-separated (e.g. CFG="r_threads 0"); '\;' stays a ';' (inside an alias)
 # LOAD=s0: load that savegame (copies of the player's saves) instead of a timedemo; use max_frames
 if [ -n "$LOAD" ]; then
 	cp /mnt/SDCARD/Saves/CurrentProfile/saves/TyrQuake/id1/*.sav $T/saves/tqbench/ 2>/dev/null
@@ -65,7 +65,7 @@ else
 	ACT="timedemo_quit 1
 timedemo $DEMO"
 fi
-printf 'r_perf %s\n%s\n%s\n' "${PERF:-0}" "$(echo "$CFG" | tr ';' '\n')" "$ACT" \
+printf 'r_perf %s\n%s\n%s\n' "${PERF:-0}" "$(echo "$CFG" | sed 's/\\;/^/g' | tr ';' '\n' | tr '^' ';')" "$ACT" \
 	> $T/game/tqbench/autoexec.cfg
 echo "autoexec: $(tr '\n' ';' < $T/game/tqbench/autoexec.cfg)"
 # the player's Quake settings (viewsize etc.), so the scene matches real play
@@ -78,6 +78,7 @@ if [ -n "$FPS" ]; then
 	grep -v tyrquake_framerate $T/core.opt > $T/core.opt.tmp && mv $T/core.opt.tmp $T/core.opt
 	echo "tyrquake_framerate = \"$FPS\"" >> $T/core.opt
 fi
+# AUDIODUMP=1: the core appends the sound it pushes (raw int16 stereo) to $T/audio.raw
 # PERFLOG=1: the play log (core option Performance Log) to $T/saves/tqbench/perflog.csv
 [ -n "$PERFLOG" ] && echo "tyrquake_perf_log = \"enabled\"" >> $T/core.opt
 echo "core options: $(grep -E "framerate|resolution" $T/core.opt | tr '\n' ' ')"
@@ -119,7 +120,7 @@ touch $T/started
 echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 cd $RA
 T0=\$(cut -d' ' -f1 /proc/uptime)
-${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }HOME=$RA LD_PRELOAD=/mnt/SDCARD/miyoo/lib/libpadsp.so ./retroarch -v -c $T/retroarch.cfg \\
+${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }${AUDIODUMP:+TQ_AUDIO_DUMP=$T/audio.raw }HOME=$RA LD_PRELOAD=/mnt/SDCARD/miyoo/lib/libpadsp.so ./retroarch -v -c $T/retroarch.cfg \\
 	--appendconfig $T/override.cfg ${MAXF:+--max-frames=$MAXF} -L $T/tyrquake_miyoo_libretro.so \\
 	"$CONTENT" > $T/log.txt 2>&1 &
 P=\$!
