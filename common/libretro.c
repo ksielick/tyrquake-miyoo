@@ -44,6 +44,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <direct.h>
 #else
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 #endif
 
@@ -317,6 +318,14 @@ static float frametime_usec = 1000.0f / 60.0f;
  * ~30 fps.  Timedemos keep fixed steps, so they replay the same frames. */
 static bool realtime_steps = true;
 static double frame_step = 1.0 / 60.0;	/* seconds, this frame */
+/* RetroArch's audio buffer, reported before each retro_run (play log) */
+static int audio_buf_occupancy = -1;	/* percent, -1 = not reported */
+static bool audio_buf_underrun;
+static void RETRO_CALLCONV audio_buffer_status(bool active, unsigned occupancy, bool underrun_likely)
+{
+   audio_buf_occupancy = active ? (int)occupancy : -1;
+   audio_buf_underrun = active && underrun_likely;
+}
 /* core option "Performance Log": perflog.csv in the save dir (perf_timing.c) */
 static bool perf_log_wanted;
 static char perf_log_path[PATH_MAX_LENGTH];
@@ -339,7 +348,7 @@ static double next_frame_step(void)
          realstep = true;
       }
       perf_timing_frame(now - last_usec, busy * 1000000.0, audio_push_usec, realstep,
-                        audio_frames_pushed,
+                        audio_frames_pushed, audio_buf_occupancy, audio_buf_underrun,
                         cls.state == ca_active && cl.worldmodel ? cl.worldmodel->name : "");
    }
    last_usec = now;
@@ -1448,6 +1457,11 @@ bool retro_load_game(const struct retro_game_info *info)
        path_lower[i] = tolower(path_lower[i]);
 
    environ_cb(RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK, &cb);
+   {
+      struct retro_audio_buffer_status_callback buf_cb = { audio_buffer_status };
+      log_cb(RETRO_LOG_INFO, "Audio: buffer status from the frontend: %s\n",
+             environ_cb(RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK, &buf_cb) ? "yes" : "no");
+   }
 
    update_variables(true);
 
@@ -2259,7 +2273,11 @@ static size_t audio_batch_timed(const int16_t *data, size_t frames)
    static FILE *dump;
    static bool dump_checked;
    size_t n;
-   double t0 = perf_timing_now_usec();
+   double t0 = perf_timing_now_usec(), cpu = 0.0;
+#ifdef __linux__
+   struct timespec c0, c1;
+   clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c0);
+#endif
 
    if (!dump_checked)
    {
@@ -2271,7 +2289,18 @@ static size_t audio_batch_timed(const int16_t *data, size_t frames)
    perf_timing_section_begin(PERF_SECTION_AUDIO_CB);
    n = audio_batch_cb(data, frames);
    perf_timing_section_end(PERF_SECTION_AUDIO_CB);
-   audio_push_usec += perf_timing_now_usec() - t0;
+   /* only the time blocked counts as waiting: RetroArch's resampler works
+    * in here too (sinc ~1-2 ms a frame on the Miyoo), and leaving that out
+    * of the frame's time made slow frames step short and starve the sound */
+#ifdef __linux__
+   clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c1);
+   cpu = (c1.tv_sec - c0.tv_sec) * 1000000.0 + (c1.tv_nsec - c0.tv_nsec) / 1000.0;
+#endif
+   {
+      double wait = perf_timing_now_usec() - t0 - cpu;
+      if (wait > 0.0)
+         audio_push_usec += wait;
+   }
    if (dump)
    {
       fwrite(data, 4, n, dump);

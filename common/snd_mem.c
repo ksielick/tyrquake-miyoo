@@ -50,7 +50,8 @@ ResampleSfx(sfx_t *sfx, int inrate, int inwidth, const byte *data)
    int srccount;
    float stepscale;
    int i;
-   int sample, samplefrac, fracstep;
+   int sample, fracstep;
+   long long samplefrac64;
    sfxcache_t *sc = (sfxcache_t*)Cache_Check(&sfx->cache);
    if (!sc)
       return;
@@ -93,14 +94,20 @@ ResampleSfx(sfx_t *sfx, int inrate, int inwidth, const byte *data)
     * and the SFX mix remains deterministic for runahead/netplay.  At integer
     * source positions (frac == 0, e.g. any down-sampling ratio) the result is
     * identical to the old nearest output; only fractional positions change. */
-   samplefrac = 0;
-   fracstep   = stepscale * 256;
+   /* 16 fractional bits for the position (8 were too few: 11025 -> 48000
+    * Hz is a step of 0.2297, 58.8/256, truncated to 58 -- every sound
+    * played 1.4 % low and its last 1.4 % was never played, so it ended
+    * mid-wave with a click); the blend still uses the top 8 of them */
+   samplefrac64 = 0;
+   fracstep   = (int)(stepscale * 65536.0f + 0.5f);
    for (i = 0; i < outcount; i++)
    {
-      int frac = samplefrac & 255;
+      int frac = (int)(samplefrac64 >> 8) & 255;
       int s0, s1;
-      srcsample = samplefrac >> 8;
-      samplefrac += fracstep;
+      srcsample = (int)(samplefrac64 >> 16);
+      if (srcsample >= srccount)
+         srcsample = srccount - 1;
+      samplefrac64 += fracstep;
 
       if (inwidth == 2)
       {

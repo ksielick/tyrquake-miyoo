@@ -100,6 +100,11 @@ typedef struct {
     vec3_t origin;		/* origin of sound effect */
     vec_t dist_mult;		/* distance multiplier (attenuation/clipK) */
     int master_vol;		/* 0-255 master volume */
+    int last_left, last_right;	/* the last frame painted, paintbuffer scale
+				 * (S_DeclickChannel) */
+    int painted_lvol, painted_rvol;	/* the volumes it was painted with: a
+				 * change (a moving source) ramps over
+				 * the next 128 frames, not a step */
 } channel_t;
 
 #define WAV_FORMAT_PCM	1
@@ -126,6 +131,9 @@ void S_StopAllSounds(qboolean clear);
  * and back in after (libretro.c); SCR_*LoadingPlaque and save/load call them */
 void S_StallBegin(void);
 void S_StallEnd(void);
+/* a playing channel is about to be cut (replaced, stolen, stopped): the
+ * mixer fades its last value out over ~2 ms instead of a step (a click) */
+void S_DeclickChannel(channel_t *ch);
 void S_ClearBuffer(void);
 void S_Update(vec3_t origin, vec3_t v_forward, vec3_t v_right, vec3_t v_up);
 

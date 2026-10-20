@@ -16,7 +16,8 @@ to RetroArch per second; bgm_dry = frames the music decoder had nothing ready; b
 least music decoded ahead; mix_short = mixer chunks where the music ran out (a gap = a click);
 clip = sample frames where the mix went over full scale (before the limiter: what it turned
 down; before 2026-10-20 11:30 only music + effects, hard-clipped); lim_min = the limiter's
-lowest gain in the second (1 = untouched);
+lowest gain in the second (1 = untouched); buf_min/underruns = RetroArch's audio buffer, the
+lowest occupancy (percent) and frames it expected an underrun;
 cpu_main/cpu_proc = CPU ms per frame (main thread / whole RetroArch); the r_perf sections in ms
 per frame; mhz, temp (C).
 """
@@ -120,6 +121,16 @@ def summary(head, rows):
         print("limiter: active in %d seconds, lowest gain %.2f (%.1f dB), median of those %.2f"
               % (len(low), lim[0], 20 * math.log10(max(lim[0], 1e-3)),
                  sorted(r["lim_min"] for r in low)[len(low) // 2] if low else 1.0))
+    if "buf_min" in rows[0]:
+        occ = [r["buf_min"] for r in rows if r["buf_min"] >= 0]
+        if occ:
+            low = sum(1 for v in occ if v < 25)
+            print("RetroArch audio buffer: lowest %d %%, seconds under 25 %%: %d, underrun "
+                  "warnings: %d frames in %d seconds"
+                  % (min(occ), low, sum(r["underruns"] for r in rows),
+                     sum(1 for r in rows if r["underruns"])))
+        else:
+            print("RetroArch audio buffer: not reported by the frontend")
     mhz = [r["mhz"] for r in rows if r["mhz"] > 0]
     temp = [r["temp"] for r in rows if r["temp"] > 0]
     if mhz:

@@ -108,10 +108,12 @@ void perf_timing_set_log(const char *path, double fps);
  * Once per frame from retro_run (before Host_Frame): the wall time since
  * the last frame, the part of it not spent waiting in audio_batch_cb,
  * that wait, whether the frame got a real-time (longer) step, the
- * samples pushed so far and the map.  Only used by the play log.
+ * samples pushed so far, the frontend's audio buffer occupancy (percent,
+ * -1 unknown) and underrun warning, and the map.  Only used by the play log.
  */
 void perf_timing_frame(double interval_usec, double busy_usec, double audio_wait_usec,
-                       int realtime_step, unsigned long long samples_total, const char *map);
+                       int realtime_step, unsigned long long samples_total,
+                       int buf_occupancy, int buf_underrun, const char *map);
 
 /* Music decoder ring fill in ms, sampled each frame (play log: the minimum). */
 void perf_timing_bgm_fill(int ms);

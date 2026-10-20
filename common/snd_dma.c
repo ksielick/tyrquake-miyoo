@@ -302,8 +302,10 @@ SND_PickChannel(int entnum, int entchannel)
 	    first_to_die = channel;
 	}
     }
-    if (first_to_die && first_to_die->sfx)
+    if (first_to_die && first_to_die->sfx) {
+	S_DeclickChannel(first_to_die);	/* cut mid-wave: fade, don't click */
 	first_to_die->sfx = NULL;
+    }
 
     return first_to_die;
 }
@@ -435,6 +437,7 @@ S_StopSound(int entnum, int entchannel)
     for (i = 0; i < MAX_DYNAMIC_CHANNELS; i++) {
 	if (channels[i].entnum == entnum
 	    && channels[i].entchannel == entchannel) {
+	    S_DeclickChannel(&channels[i]);
 	    channels[i].remaining_samples = 0;
 	    channels[i].sfx = NULL;
 	    return;

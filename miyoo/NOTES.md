@@ -204,7 +204,7 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
 ## Installed on the card (2026-10-19, owner asked)
-- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 33cb3773 = look-ahead limiter + load fades (see Sound), before it 03a5eeee, 91afb028 =
+- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 a38e69e7 = declicker + limiter + load fades (see Sound), before it 33cb3773, 03a5eeee, 91afb028 =
   3ace1ed (play log) built with PGO + LTO** (pgo.sh; shots 59/59; before it: 4a500e2b = ee6132b
   PGO + LTO, a81e88ab PGO only), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
   `tyrquake_libretro.so` is untouched.
@@ -565,6 +565,30 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
 - WAVs for the owner: `<ws>/build/perflog/demo1_A_hard_clip.wav` (no limiter) and
   `demo1_B_limiter.wav` (same demo, look-ahead limiter).
 - Installed 2026-10-20: core 33cb3773 (PGO+LTO, shots 59/59).
+- Owner: still clicks with the nailgun (fast), explosions, and in the menu (up/down). Not
+  clipping (the menu sound is quiet), not the music.
+- RetroArch's audio buffer status (RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK, logged:
+  "Audio: buffer status from the frontend: yes", columns buf_min/underruns) is useless with
+  Onion's OSS/audioserver: 0 % and "underrun likely" every frame while the sound plays fine.
+- The wait subtracted from a slow frame's real-time step now leaves out the CPU time inside
+  audio_batch_cb (CLOCK_THREAD_CPUTIME_ID): with audio_resampler sinc RetroArch resamples in
+  there (~1-2 ms a frame), which was counted as waiting. Owner's play log had 47 347 samples/s
+  (31 ordinary seconds at 46 000-47 600); benches didn't reproduce it (47 780-48 013).
+- Clicks in the engine itself (any port would have them): a new sound on the same entity
+  channel cuts the old one mid-wave (every nailgun shot), S_LocalSound (menu) uses entchannel -1,
+  which takes ANY of the player's channels, a full list steals the quietest, sounds end on
+  non-zero samples, and a moving source's volume steps once a frame (zipper). Fixes:
+  - declicker (snd_mix.c): a cut channel's last value (channel_t last_left/right, kept by
+    SND_PaintChannelFrom16) is added to the mix and fades over ~2 ms; S_DeclickChannel from
+    SND_PickChannel (replace/steal) and S_StopSound, S_DeclickTail where a sound ends in a chunk.
+  - volume ramps: a playing channel whose volumes changed since its last paint goes there
+    linearly over 128 frames (painted_lvol/rvol); a sound's start (pos 0) stays sharp.
+  - ResampleSfx: 16 fractional bits (8 truncated the 11025 → 48000 step 58.8/256 to 58: every
+    sound 1.4 % low and its last 1.4 % never played, ending mid-wave).
+  - demo1 dump, effects only: second-difference kinks > 16 000: 30 → 1, > 8 000: 694 → 479
+    (the rest: linear interpolation corners of the 11 kHz samples). WAVs:
+    `<ws>/build/perflog/demo1_C_before_declick.wav`, `demo1_D_declick.wav`.
+- Installed 2026-10-20: core a38e69e7 (PGO+LTO, shots 59/59).
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and

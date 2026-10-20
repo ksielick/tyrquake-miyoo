@@ -161,6 +161,58 @@ static void S_Limit (int count)
 	perf_timing_limiter(g_min);
 	memmove(lim_buf, lim_buf + count, LIM_D * sizeof(lim_buf[0]));
 }
+/*
+ * Declicker.  Quake cuts sounds mid-wave: a new sound on the same entity
+ * channel replaces the old one (each nailgun shot), the menu's local sound
+ * takes any of the player's channels, a full channel list steals the
+ * quietest, and a sound may end on a non-zero sample.  The step to zero is
+ * a click.  Instead the cut channel's last value is added to the mix and
+ * fades to nothing over ~2 ms.  dc_* fade from the start of the next chunk
+ * (cuts between mixes, S_DeclickChannel); a sound ending inside a chunk
+ * fades from there (S_DeclickTail), its rest carried in dc_next_*.
+ */
+static float dc_left, dc_right, dc_next_left, dc_next_right;
+
+void S_DeclickChannel (channel_t *ch)
+{
+	if (ch->sfx)
+	{
+		dc_left += (float) ch->last_left;
+		dc_right += (float) ch->last_right;
+	}
+	ch->last_left = ch->last_right = 0;
+}
+
+/* add the fading pair into paintbuffer[start, count); 0 once it is gone */
+static void S_DeclickPaint (float *l, float *r, int start, int count)
+{
+	float k = 1.0f - 1.0f / (0.002f * (float) shm->speed);
+	int i;
+
+	for (i = start; i < count; i++)
+	{
+		if (*l < 256.0f && *l > -256.0f && *r < 256.0f && *r > -256.0f)
+		{
+			*l = *r = 0.0f;
+			return;
+		}
+		paintbuffer[i].left += (int) *l;
+		paintbuffer[i].right += (int) *r;
+		*l *= k;
+		*r *= k;
+	}
+}
+
+static void S_DeclickTail (channel_t *ch, int start, int count)
+{
+	float l = (float) ch->last_left, r = (float) ch->last_right;
+
+	S_DeclickPaint(&l, &r, start, count);
+	dc_next_left += l;
+	dc_next_right += r;
+	ch->last_left = ch->last_right = 0;
+}
+
 static int *snd_p, snd_linear_count;
 short *snd_out;
 
@@ -399,12 +451,19 @@ void S_PaintChannels (int samples_to_paint)
 					}
 					else
 					{	/* channel just stopped */
+						S_DeclickTail(ch, ltime, chunk);
 						ch->sfx = NULL;
 						break;
 					}
 				}
 			}
 		}
+
+		/* fade out what was cut before this chunk; then what ended in it */
+		S_DeclickPaint(&dc_left, &dc_right, 0, chunk);
+		dc_left += dc_next_left;
+		dc_right += dc_next_right;
+		dc_next_left = dc_next_right = 0.0f;
 
 		/* Hard-limit the SFX mix to 0 dBFS (int16 full scale).  Note: the
 		 * upstream QuakeII/QuakeSpasm lineage these comments came from
@@ -524,6 +583,28 @@ static void SND_PaintChannelFrom16 (channel_t *ch, sfxcache_t *sc, int count, in
 
 	i = 0;
 
+	/* the volumes changed since the last paint of this sound (it moved,
+	 * or the listener did): go there in a straight line over 128 frames
+	 * instead of a step, which clicks on a loud sound.  A sound just
+	 * started (pos 0) keeps its sharp start. */
+	if (ch->pos > 0 && (ch->painted_lvol != leftvol || ch->painted_rvol != rightvol))
+	{
+		int n = count < 128 ? count : 128;
+		int l0 = ch->painted_lvol << 8, r0 = ch->painted_rvol << 8;
+		int dl = ((leftvol << 8) - l0) / n, dr = ((rightvol << 8) - r0) / n;
+
+		for (; i < n; i++)
+		{
+			int data = sfx[i];
+			l0 += dl;
+			r0 += dr;
+			pb[i].left  += (data * (l0 >> 4)) >> 4;
+			pb[i].right += (data * (r0 >> 4)) >> 4;
+		}
+	}
+	ch->painted_lvol = leftvol;
+	ch->painted_rvol = rightvol;
+
 	/* SIMD MAC kernel: 8 samples per iter.  Read 8 int16, widen
 	 * to two int32x4 lanes, multiply each by leftvol and rightvol
 	 * (broadcast scalars), zip into (l,r) stereo layout, add into
@@ -610,6 +691,11 @@ static void SND_PaintChannelFrom16 (channel_t *ch, sfxcache_t *sc, int count, in
 		int right = data * rightvol;
 		pb[i].left  += left;
 		pb[i].right += right;
+	}
+	if (count > 0)
+	{
+		ch->last_left  = sfx[count - 1] * leftvol;
+		ch->last_right = sfx[count - 1] * rightvol;
 	}
 
 	ch->pos += count;
