@@ -2,3 +2,4 @@
 *.port text eol=lf
 *.notfound text eol=lf
 *.info text eol=lf
+*.cfg text eol=lf

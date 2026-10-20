@@ -103,6 +103,8 @@ struct retro_core_option_definition option_defs_us[] = {
       },
 #if defined(_3DS)
       "400x240"
+#elif defined(TYRQUAKE_MIYOO_MINI)
+      "640x480"	/* the screen's native size (miyoo/build/build_core.sh) */
 #elif defined(DINGUX)
       "320x240"
 #else
@@ -157,6 +159,8 @@ struct retro_core_option_definition option_defs_us[] = {
       },
 #if defined(_3DS)
       "25"
+#elif defined(TYRQUAKE_MIYOO_MINI)
+      "59.67"	/* the panel's refresh */
 #elif defined(_MIYOO)
       "15"
 #elif defined(DINGUX)

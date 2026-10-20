@@ -54,7 +54,7 @@ SRCS="$SRCS miyoo/build/glibc_compat.c"
 
 CFLAGS="-O2 -DNDEBUG -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -fPIC -fomit-frame-pointer -Wall
 -Wno-unused -Wno-maybe-uninitialized
--DHAVE_STRINGS_H -DHAVE_STDINT_H -DHAVE_INTTYPES_H -D__LIBRETRO__ -DNQ_HACK -DQBASEDIR=. -DTYR_VERSION=0.62
+-DTYRQUAKE_MIYOO_MINI -DHAVE_STRINGS_H -DHAVE_STDINT_H -DHAVE_INTTYPES_H -D__LIBRETRO__ -DNQ_HACK -DQBASEDIR=. -DTYR_VERSION=0.62
 -DINLINE=inline -DUSE_CODEC_WAVE -DUSE_CODEC_FLAC -DUSE_CODEC_VORBIS -DVORBIS_USE_TREMOR
 -DGIT_VERSION=\\\"$(cd "$REPO" && git rev-parse --short HEAD)\\\"
 -include miyoo/build/glibc_compat.h -I. -Ilibretro-common/include -Iinclude -Ideps/libFLAC/include -Ideps -Ideps/libogg/include $EXTRA"

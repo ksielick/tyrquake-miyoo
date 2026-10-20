@@ -7,6 +7,7 @@
 #   RetroArch/.retroarch/core_info/tyrquake_miyoo_libretro.info
 #   Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port
 #   (same folder) the mission pack / dopa shortcuts as .notfound (Onion's import enables them)
+#   Saves/CurrentProfile/config/TyrQuake/TyrQuake.cfg (RetroArch override: audio sync, 59.67 Hz)
 # No game data: the player brings id1/pak0.pak (and pak1.pak).
 set -e
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
@@ -25,6 +26,9 @@ cp "$CORE" "$STAGE/RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so"
 cp "$REPO/miyoo/card/tyrquake_miyoo_libretro.info" "$STAGE/RetroArch/.retroarch/cores/"
 cp "$REPO/miyoo/card/tyrquake_miyoo_libretro.info" "$STAGE/RetroArch/.retroarch/core_info/"
 cp "$REPO/miyoo/card/1996 Quake.port" "$REPO/miyoo/card/"*.notfound "$STAGE/$SC/"
+# RetroArch settings for this core (core override, shared with the stock TyrQuake core by name)
+mkdir -p "$STAGE/Saves/CurrentProfile/config/TyrQuake"
+cp "$REPO/miyoo/card/TyrQuake.cfg" "$STAGE/Saves/CurrentProfile/config/TyrQuake/"
 
 # Python's zipfile writes '/' separators (PowerShell 5's Compress-Archive writes '\')
 # (Windows' python3 may be the Store's stub: try each until one runs)
@@ -34,7 +38,7 @@ for p in "py -3" python3 python; do
 done
 [ -n "$PY" ] || { echo "Python 3 is needed for the zip" >&2; exit 1; }
 rm -f "$ZIP"
-(cd "$STAGE" && $PY -I -m zipfile -c "$ZIP" RetroArch Roms)
+(cd "$STAGE" && $PY -I -m zipfile -c "$ZIP" RetroArch Roms Saves)
 
 echo "core $(md5sum "$CORE" | cut -c1-8)"
 $PY -I -m zipfile -l "$ZIP"

@@ -46,6 +46,9 @@ Steps:
      `1996 Quake.port`, and `1997 Quake hipnotic`, `1997 Quake rogue` and `2021 Quake dopa` for
      the mission packs and Dimension of the Past (see [Mission packs](#mission-packs)).
      Existing shortcuts with these names are replaced.
+   - RetroArch settings for the core, `Saves/CurrentProfile/config/TyrQuake/TyrQuake.cfg`:
+     *Audio Sync* on, the *sinc* resampler and the screen's 59.67 Hz refresh. It replaces an
+     existing file of that name, and the stock TyrQuake core reads it too (same name).
 3. On the Miyoo: *Games → Ports → 1996 Quake*. Refresh the list from its menu if it doesn't show.
 
 The first start takes a few seconds longer: RetroArch rebuilds its list of cores (see below).
@@ -125,9 +128,9 @@ way after updating, delete `core_info.cache` yourself.
 
 In RetroArch's quick menu, *Core Options*:
 
-- **Internal resolution**: `640x480` is the screen's native size. `320x240` is about twice as
-  fast.
-- **Framerate**: `59.67fps (Miyoo Mini screen)` matches the screen's refresh. `Auto` takes
+- **Internal resolution** (default `640x480`, the screen's native size): `320x240` is about
+  twice as fast.
+- **Framerate** (default `59.67fps (Miyoo Mini screen)`, the screen's refresh): `Auto` takes
   RetroArch's refresh rate (60 on Onion), which works too.
 - **Slow Frames** (default `Real time`): what happens when a frame takes longer than the
   framerate allows (a heavy fight at 640x480). `Real time`: the game and the sound move on by
