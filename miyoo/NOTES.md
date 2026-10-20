@@ -573,6 +573,10 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
      change that alters the picture; every optimisation must keep the shots identical.
   5. Overclocking (last).
 - Later: entity alpha (0.71), fence textures (owner postponed).
+- Release builds (owner's decision 2026-10-20, not done yet): the PGO profile is collected on
+  the Miyoo (pgo.sh) and the .gcda files are committed to the repo; a GitHub Actions build uses
+  them (-fprofile-use, -Wno-error=coverage-mismatch), no device or emulator in CI. Refresh the
+  profile on the device before a release. (Rejected: collecting it under QEMU in CI.)
 - Owner's ideas for later (2026-10-20): try the core on an R36 (Rockchip RK3326, ArkOS); a
   separate branch for a standalone port (Onion's GameSwitcher works only with RetroArch cores;
   mr-finster/miyoo64 gives its standalone games their own menu and save states instead).
