@@ -1,6 +1,6 @@
 #!/bin/sh
-# From the PC (Git Bash): a profile-guided (PGO) build of the core, ~3 % faster than -O2.
-#   miyoo/tools/pgo.sh [demos]        (default demo1 demo2 demo3)
+# From the PC (Git Bash): a profile-guided (PGO) + LTO build of the core, ~7 % faster than -O2.
+#   miyoo/tools/pgo.sh [demos]        (default demo1 demo2 demo3; LTO=0: PGO only)
 # 1. builds an instrumented core (-O3 -fprofile-generate) into <workspace>/build/core_pgo,
 # 2. runs the timedemos with it on the Miyoo (bench.sh PGO=1: the profile goes to /tmp/pgo),
 # 3. fetches the .gcda files next to the objects and rebuilds there with -fprofile-use.
@@ -17,8 +17,11 @@ DEMOS=${*:-demo1 demo2 demo3}
 
 [ -d "$WS/build" ] || { echo "no $WS/build" >&2; exit 1; }
 rm -rf "$OUT"
-LDEXTRA="-fprofile-generate" sh "$REPO/miyoo/build/build_core.sh" "$OUT" -O3 -fprofile-generate \
-	-fprofile-update=atomic | grep -v "^  CC" || true
+# =/tmp/pgo: without a Linux directory the .gcda paths are the Windows ones (G:/...), which
+# the device can't create, and this toolchain's gcov runtime then aborts (free(): invalid
+# pointer). LTO=1 applies to the final build only: the profile is read per unit before LTO.
+LTO= LDEXTRA="-fprofile-generate=/tmp/pgo" sh "$REPO/miyoo/build/build_core.sh" "$OUT" -O3 \
+	-fprofile-generate=/tmp/pgo -fprofile-update=atomic | grep -v "^  CC" || true
 [ -f "$OUT/tyrquake_libretro.so" ] || { echo "instrumented build failed" >&2; exit 1; }
 
 "$MSSH" "rm -rf /tmp/pgo" || true
@@ -37,6 +40,7 @@ G=$(find "$WS/build/pgo_data" -name common_d_scan.gcda)
 cp "$(dirname "$G")"/*.gcda "$OUT/obj/"
 echo "profile: $(ls "$OUT"/obj/*.gcda | wc -l) files"
 
-# the changed flags rebuild everything, now using the profile
-sh "$REPO/miyoo/build/build_core.sh" "$OUT" -O3 -fprofile-use -fprofile-correction -Wno-missing-profile |
+# the changed flags rebuild everything, now using the profile (LTO unless LTO=0)
+[ "$LTO" = 0 ] && LTO= || LTO=1
+LTO=$LTO sh "$REPO/miyoo/build/build_core.sh" "$OUT" -O3 -fprofile-use -fprofile-correction -Wno-missing-profile |
 	grep -v "^  CC" || true

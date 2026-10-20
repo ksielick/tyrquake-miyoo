@@ -5,12 +5,24 @@
 # Default out_dir: <workspace>/build/core. Objects go to <out_dir>/obj.
 # Only .c timestamps are checked: after a header change run with FORCE=1.
 # LDEXTRA: extra link flags (-fprofile-generate=... for a PGO profiling build, see NOTES).
+# LTO=1: link-time optimisation (the extra CFLAGS are passed to the link too); NOLTO: sources
+# compiled without it, default common/r_misc.c (inlined elsewhere its float maths, fused
+# differently, moved a texel: shots must stay identical, see NOTES).
 set -e
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 WS=$(cd "$REPO/../.." && pwd)
 OUT=${1:-$WS/build/core}
 [ $# -gt 0 ] && shift
 EXTRA="$*"
+NOLTO=${NOLTO-common/r_misc.c}
+COMPAT_X=""
+if [ -n "$LTO" ]; then
+	EXTRA="$EXTRA -flto -DGLIBC_COMPAT_WRAP"
+	COMPAT_X="-fno-lto"
+	LDEXTRA="$LDEXTRA -flto -O2 $* -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -fPIC
+-fomit-frame-pointer -Wl,--wrap=exp,--wrap=log,--wrap=pow,--wrap=exp2,--wrap=log2
+-Wl,--wrap=pthread_create,--wrap=pthread_join"
+fi
 TC=${TC:-/g/Emulacja/redriver2-miyoo/deps/arm-gnu-toolchain-13.3.rel1-mingw-w64-i686-arm-none-linux-gnueabihf/bin}
 CC="$TC/arm-none-linux-gnueabihf-gcc"
 JOBS=${JOBS:-8}
@@ -61,7 +73,9 @@ for s in $SRCS; do
 	common/snd_mix.c|common/r_alias.c) x="-O3" ;;
 	deps/libvorbis/lib/*) x="-include deps/libvorbis/lib/fvorbis_rename.h -Ideps/libvorbis/lib -Ideps/libvorbis/include" ;;
 	common/snd_vorbis_float.c) x="-Ideps/libvorbis/include" ;;
+	miyoo/build/glibc_compat.c) x="$COMPAT_X" ;;
 	esac
+	case " $NOLTO " in *" $s "*) x="$x -fno-lto" ;; esac
 	if [ ! -f "$o" ] || [ "$s" -nt "$o" ] || [ -n "$FORCE" ]; then
 		echo "$s $o${x:+ $x}"
 	fi

@@ -16,8 +16,9 @@ Verified on the device: both load ("Loading game from s0.sav/s1.sav", no error),
 the level. Worth reporting upstream.
 
 ## Layout
-- `G:\Emulacja\tyrquake-miyoo\repos\tyrquake` — clone of github.com/libretro/tyrquake, branch `miyoo`
-  (base: upstream master 67db338, 2026-10-12).
+- `G:\Emulacja\tyrquake-miyoo\repos\tyrquake` — clone of github.com/libretro/tyrquake, branch
+  `retroarch` (the libretro core; called `miyoo` until 2026-10-20; base: upstream master 67db338,
+  2026-10-12). Branch `standalone` (from 811be98, 2026-10-20): reserved for a standalone port.
 - `miyoo/build/build_core.sh` — builds `build/core/tyrquake_libretro.so` (+ `.unstripped.so`) with the
   Arm GNU toolchain 13.3 from `G:\Emulacja\redriver2-miyoo\deps`, -O2 cortex-a7/neon-vfpv4, ~8 s.
   Only .c timestamps are checked: `FORCE=1` after header changes. The script fails if any symbol needs
@@ -30,8 +31,8 @@ the level. Worth reporting upstream.
 - `miyoo/tools/package_release.sh` — release zip (core, .info, shortcut) in `<workspace>/build/release/`.
 - `miyoo/card/` — files as installed on the SD card (`.info`, `1996 Quake.port` shortcut).
 - `miyoo/README.md` — user-facing README (install, Game Switcher, settings).
-- GitHub: private https://github.com/ksielick/tyrquake-miyoo, remote `miyoo`, branch `miyoo`.
-  Push with `git push miyoo refs/heads/miyoo:refs/heads/miyoo` (plain `miyoo miyoo` is ambiguous).
+- GitHub: private https://github.com/ksielick/tyrquake-miyoo, remote `miyoo`. On GitHub the branch
+  is still `miyoo` (pushed up to 344cd32) until the owner has it renamed there too.
 - Tooling: `py -3` for the Python tools (not `-I`: numpy/PIL are in the user site-packages);
   `mssh` returns its output filter's exit code (1 when the remote prints nothing) → `|| true` in
   scripts; Git Bash needs `MSYS2_ARG_CONV_EXCL` to pass device paths like `/tmp/...` unchanged.
@@ -471,6 +472,25 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   O3 demo1 13.13-13.23 / 15.86-15.97 / 12.66, demo3 13.50-13.61 / 16.09-16.18 / 13.11-13.22;
   PGO demo1 12.91-12.96 / 15.63-15.76 / 12.40-12.54, demo3 13.28-13.60 / 15.93-16.60 / 12.71-12.82.
   PGO ~3 % (trained on the same demos), O3 ~1.5 %. Shots: O3 = O2, PGO = reference (59/59).
+- LTO (2026-10-20): `LTO=1 build_core.sh` adds -flto (also on the link); pgo.sh uses it for the
+  final build by default (LTO=0: PGO only). Two problems solved:
+  - the .symver lines force-included from glibc_compat.h are lost under LTO (exp@GLIBC_2.29,
+    pthread_create@GLIBC_2.34 came back): with LTO, glibc_compat.c is built without LTO, binds
+    the old versions and the other units reach it via -Wl,--wrap=exp,log,pow,exp2,log2,
+    pthread_create,pthread_join.
+  - shots: 1 texel differed (demo1 shot 900). -ffp-contract=off made it worse (56 shots: the
+    reference relies on GCC's default fused multiply-adds as placed without LTO); bisected to
+    r_misc.c (TransformVector & co. inlined into other units fuse differently). `NOLTO`
+    (default common/r_misc.c) keeps sources out of LTO: then 59/59 identical.
+- pgo.sh had never run whole: with plain -fprofile-generate the .gcda paths are the Windows
+  ones (G:/...), the device can't create them and this toolchain's gcov runtime then aborts
+  (free(): invalid pointer, exit 134, even a 1-line test program). Yesterday's build had used
+  -fprofile-generate=/tmp/pgo by hand; pgo.sh does that now. An instrumented build runs ~2.7x
+  slower (demo1 ~38 ms/frame).
+- A/B PGO vs PGO+LTO (core 4a500e2b), two rounds alternated, 640x480 (avg / p90 / main thread
+  CPU ms): demo1 13.21-13.22 / 16.12-16.25 / 12.0 → 12.65-12.70 / 15.27-15.44 / 11.65,
+  demo3 13.71 / 16.42-16.45 / 12.55 → 13.16-13.31 / 15.78 / 12.0-12.2: another ~4 %
+  (PGO+LTO ~7 % over -O2). The binary is smaller too (707 KB vs 801 KB).
 - shots.sh pins FPS=40 (the reference set's framerate; the owner's option is now 59.67, which
   moves e.g. when notify lines vanish — 34 shots differed in the top-left text only).
 
@@ -481,7 +501,7 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
 15.8-17.2: to bring p90 under 16.76 ms (heaviest first):
 - Done since: music decoding on its own thread, 59.67 fps option, Slow Frames real-time steps
   (no clicks when a frame is late), bench SYNC/FPS/VSYNC/REFRESH/LAT/RC/RESAMPLER, CPU per frame.
-- Done: 1. PGO (~3 %, installed 2026-10-20).
+- Done: 1. PGO (~3 %, installed 2026-10-20), LTO (~4 % more, built 2026-10-20, not installed).
 - Pacing: with audio_sync on the frames reach the screen in bursts (12/18/20 ms) whatever we do;
   vsync without audio_sync is even (16.76) but drops samples. Not solved; would need a frontend
   whose audio rate control works with Onion's OSS (or a standalone port).
@@ -495,3 +515,10 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
      change that alters the picture; every optimisation must keep the shots identical.
   5. Overclocking (last).
 - Later: entity alpha (0.71), fence textures (owner postponed).
+- Owner's ideas for later (2026-10-20): try the core on an R36 (Rockchip RK3326, ArkOS); a
+  separate branch for a standalone port (Onion's GameSwitcher works only with RetroArch cores;
+  mr-finster/miyoo64 gives its standalone games their own menu and save states instead).
+- Release worry (owner, 2026-10-20): players with other RetroArch settings may get bad sound.
+  Ideas: test Onion's defaults without overrides; the frontend's audio buffer status callback
+  (fill level, underrun warning) to add samples or warn when audio_sync is off; README
+  recommended settings.
