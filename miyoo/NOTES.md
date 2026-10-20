@@ -491,6 +491,7 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
   2. Quake's mixing (~0.5 ms) on the second core, overlapped with drawing.
   3. The serial part of the world drawing (BSP walk, edge lists, R_ScanEdges' edge sorting,
      ~1.5-2 ms): the biggest piece still on one core.
-  4. 32-pixel instead of 16-pixel perspective spans (fewer divides): not pixel-identical.
+  4. ~~32-pixel instead of 16-pixel perspective spans~~: rejected by the owner (2026-10-20): no
+     change that alters the picture; every optimisation must keep the shots identical.
   5. Overclocking (last).
 - Later: entity alpha (0.71), fence textures (owner postponed).
