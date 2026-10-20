@@ -1,0 +1,34 @@
+#!/bin/sh
+# Retroarch Ports Script Template
+
+# main configuration :
+GameName="Quake rogue (1997) (Port - TyrQuake)"
+Core="tyrquake_miyoo"
+# TyrQuake-Miyoo: the content is this shortcut (RomDir/RomFile point back at it, wherever it
+# sits under Shortcuts/), so RetroArch reports the shortcut's name and Onion's GameSwitcher
+# resumes the game; the core reads the game dir from QuakeDir (relative to Roms/PORTS/Games).
+QuakeDir="Quake Collection (TyrQuake)/rogue"
+# for Onion's "Ports import" (Emu/PORTS/import.sh), which checks the game data from these (it
+# would read RomDir below literally, find nothing and turn this shortcut into .notfound)
+GameDir="Quake Collection (TyrQuake)/rogue"
+GameDataFile="pak0.pak"
+RomDir="../Shortcuts/${PWD##*/Shortcuts/}"
+RomFile="$(basename "$0")"
+KillAudioserver=0
+PerformanceMode=0
+
+# specific to this port :
+Arguments=""
+
+# RetroArch caches the cores' .info files (cores/core_info.cache) and doesn't notice a changed
+# one, so a new TyrQuake-Miyoo .info (e.g. save states turned on) would be ignored: drop the
+# cache once each time the .info changes; RetroArch rebuilds it.
+RA_CORES=/mnt/SDCARD/RetroArch/.retroarch/cores
+INFO_SUM=$(md5sum "$RA_CORES/${Core}_libretro.info" 2>/dev/null | cut -d' ' -f1)
+if [ -n "$INFO_SUM" ] && [ "$INFO_SUM" != "$(cat "$RA_CORES/.${Core}_info.md5" 2>/dev/null)" ]; then
+	rm -f "$RA_CORES/core_info.cache"
+	echo "$INFO_SUM" > "$RA_CORES/.${Core}_info.md5"
+fi
+
+# running command line :
+/mnt/SDCARD/Emu/PORTS/launch_retroarch.sh "$GameName" "$Core" "$RomDir" "$RomFile" "$Arguments" "$KillAudioserver" "$PerformanceMode"

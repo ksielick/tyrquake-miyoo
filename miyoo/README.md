@@ -7,11 +7,15 @@ TyrQuake core, and is started from Onion's **Ports** list.
 
 What it changes, compared with the stock core:
 
-- **Faster at 640x480.** The software renderer, the surface caches and the final colour
-  conversion run on both CPU cores. In the timedemos at 640x480 an average frame takes
-  13.9-15.6 ms instead of 17.2-20.9 ms with the stock core (demo1-3). The screen refreshes at
-  59.67 Hz, so a frame has 16.76 ms. The picture is pixel-for-pixel the same as the original
-  one-thread renderer (checked with timedemo screenshots).
+- **Faster at 640x480.** The software renderer, the surface caches, the models and the final
+  colour conversion run on both CPU cores, the music is decoded on the second core, and the core
+  is built with profile-guided and link-time optimisation. In the timedemos at 640x480 an
+  average frame takes 12.7-13.3 ms instead of 17.2-20.9 ms with the stock core (demo1-3). The
+  screen refreshes at 59.67 Hz, so a frame has 16.76 ms. The picture is pixel-for-pixel the same
+  as the original one-thread renderer (checked with timedemo screenshots).
+- **Cleaner sound.** No crackle when the game slows down, when many sounds play at once, when a
+  sound is cut off (fast weapons, the menu) or when a level loads. See
+  [Sound](#sound).
 - **Onion's Game Switcher works**, with the picture of where you left off. Menu saves the game and
   resumes it, also after turning the console off. See [Game Switcher](#game-switcher).
 - **Savegames load again.** The upstream core (May-October 2026) wrote savegames it could not load
@@ -38,8 +42,10 @@ Steps:
    the ones already there. It adds:
    - the core, `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so`;
    - its description, `tyrquake_miyoo_libretro.info`, in `cores/` and `core_info/`;
-   - the Ports shortcut, `Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port`.
-     An existing shortcut with that name is replaced.
+   - the Ports shortcuts in `Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/`:
+     `1996 Quake.port`, and `1997 Quake hipnotic`, `1997 Quake rogue` and `2021 Quake dopa` for
+     the mission packs and Dimension of the Past (see [Mission packs](#mission-packs)).
+     Existing shortcuts with these names are replaced.
 3. On the Miyoo: *Games → Ports → 1996 Quake*. Refresh the list from its menu if it doesn't show.
 
 The first start takes a few seconds longer: RetroArch rebuilds its list of cores (see below).
@@ -87,9 +93,25 @@ RomFile="$(basename "$0")"
 `1996 Quake`, and each shortcut has its own state file. Without this, every Quake game folder would
 share one `pak0` state.
 
-For a mission pack, copy the shortcut under another name and change `QuakeDir`, e.g.
-`Scourge of Armagon.port` with `QuakeDir="Quake Collection (TyrQuake)/hipnotic"`. The data goes in
-`hipnotic/` next to `id1/`. A state from another game folder is never loaded.
+The shortcuts also carry `GameDir` and `GameDataFile` for Onion's *Import games (Ports)*, which checks
+from them that the game's data is there (without them it would hide the shortcut).
+
+### Mission packs
+
+The release has shortcuts for the two mission packs and for Dimension of the Past:
+
+| shortcut | game folder (next to `id1/`) | game |
+|---|---|---|
+| `1997 Quake hipnotic` | `hipnotic/` | Scourge of Armagon |
+| `1997 Quake rogue` | `rogue/` | Dissolution of Eternity |
+| `2021 Quake dopa` | `dopa/` | Dimension of the Past |
+
+They come as `.notfound` files, hidden in the Ports list. Copy the pack's folder (with its
+`pak0.pak`) into `Roms/PORTS/Games/Quake Collection (TyrQuake)/` and run Onion's *Import games (Ports)*
+(in the Ports list's options): it turns the shortcuts whose data it finds into `.port`. `id1/` must
+stay there, the packs use it. For another mod, copy a shortcut under a new name and change
+`QuakeDir`, `GameDir` and `GameName`; a folder other than `hipnotic`, `rogue` or `quoth` is loaded
+with `-game <folder>`. A state from another game folder is never loaded.
 
 ### RetroArch's core list cache
 
@@ -105,10 +127,48 @@ In RetroArch's quick menu, *Core Options*:
 
 - **Internal resolution**: `640x480` is the screen's native size. `320x240` is about twice as
   fast.
-- **Framerate**: if the sound crackles in heavy scenes, `50` gives each frame more time.
+- **Framerate**: `59.67fps (Miyoo Mini screen)` matches the screen's refresh. `Auto` takes
+  RetroArch's refresh rate (60 on Onion), which works too.
+- **Slow Frames** (default `Real time`): what happens when a frame takes longer than the
+  framerate allows (a heavy fight at 640x480). `Real time`: the game and the sound move on by
+  the time that really passed, so the game keeps its speed and RetroArch always gets enough
+  sound. `Fixed`: every frame is one framerate step, as in the original; a slow frame slows the
+  game down and hands over too little sound, which crackles. Timedemos always use fixed steps.
+- **Sound Filter** (default `Original (11 kHz)`): see [Sound](#sound).
+- **Performance Log** (default off): see [Sound](#sound).
 
-Both take effect after restarting the game. An audio latency of 128 ms (*Settings → Audio →
-Output → Audio Latency*) also helps against crackling.
+Resolution and framerate take effect after restarting the game.
+
+## Sound
+
+Quake's effects are 11 kHz samples. On DOS, Quake mixed at 11 kHz and the sound card filtered
+everything above about 5 kHz, which hid the rough edges. At the Miyoo's 48 kHz they reach the ear
+as crackle. The core deals with that and with a few more causes of clicks:
+
+- **Sound Filter: Original (11 kHz)** filters the effects like that sound card (a low-pass at
+  5 kHz). The music, which came from the CD, is not filtered. `Off` gives the full range. It
+  costs about 0.04 ms a frame.
+- **No hard clipping.** Several loud effects, or effects and music, add up to more than the
+  loudest sample there is. Instead of cutting the tops off, the core turns the whole sound down
+  smoothly for a moment (a limiter that looks 5 ms ahead) and back up within about 0.15 s. If
+  you hear it duck in big fights, lower Quake's *Sound Volume* and raise the console's volume.
+- **No clicks from cut-off sounds.** Quake stops a sound mid-wave when the same source plays a
+  new one (each nailgun shot, each move in the menu) or when it runs out of channels. The core
+  fades such a sound out over 2 ms, and sounds whose volume changes as they move change it
+  smoothly. The effects are also resampled to 48 kHz at the right pitch (they used to play 1.4 %
+  low with their ends cut off).
+- **Loading and saving** stop the game for 0.1-0.6 s. The core fades the sound out before and
+  back in after, instead of letting it break off.
+- **Music** (`.ogg`) is decoded on the second CPU core, a few seconds ahead.
+
+Keep RetroArch's *Audio Sync* on (Onion's default). Without it RetroArch drops sound that
+doesn't fit its buffer, which crackles.
+
+**Performance Log** writes one line per second to `perflog.csv` in the game's save folder
+(`Saves/CurrentProfile/saves/TyrQuake/id1/` for Quake): frame times, frames over the budget,
+how much sound was handed over, the music buffer, how hard the limiter worked, CPU time, CPU
+clock and temperature. `miyoo/tools/perflog.py` on a PC fetches it over the network and
+summarises it with a chart. Leave it off for normal play.
 
 ## Building
 

@@ -8,6 +8,10 @@ Core="tyrquake_miyoo"
 # sits under Shortcuts/), so RetroArch reports the shortcut's name and Onion's GameSwitcher
 # resumes the game; the core reads the game dir from QuakeDir (relative to Roms/PORTS/Games).
 QuakeDir="Quake Collection (TyrQuake)/id1"
+# for Onion's "Ports import" (Emu/PORTS/import.sh), which checks the game data from these (it
+# would read RomDir below literally, find nothing and turn this shortcut into .notfound)
+GameDir="Quake Collection (TyrQuake)/id1"
+GameDataFile="pak0.pak"
 RomDir="../Shortcuts/${PWD##*/Shortcuts/}"
 RomFile="$(basename "$0")"
 KillAudioserver=0

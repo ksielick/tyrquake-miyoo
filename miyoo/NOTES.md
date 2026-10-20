@@ -204,6 +204,7 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
 ## Installed on the card (2026-10-19, owner asked)
+- Shortcuts (owner asked, 2026-10-20): `miyoo/card/` has `1997 Quake hipnotic`, `1997 Quake rogue`, `2021 Quake dopa` as .notfound (our core, QuakeDir), all shortcuts with GameDir/GameDataFile for Onion's import.sh (it read our RomDir literally and would have hidden 1996 Quake). Installed on the card; the old ones in `Roms/PORTS/Games/TyrQuake-bench/backup-20261020-shortcuts/`. No pack data on the card or the PC yet.
 - **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 5125416a = sound filter + declicker + limiter + load fades (see Sound), before it a38e69e7, 33cb3773, 03a5eeee, 91afb028 =
   3ace1ed (play log) built with PGO + LTO** (pgo.sh; shots 59/59; before it: 4a500e2b = ee6132b
   PGO + LTO, a81e88ab PGO only), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock

@@ -1,3 +1,4 @@
 *.sh text eol=lf
 *.port text eol=lf
+*.notfound text eol=lf
 *.info text eol=lf
