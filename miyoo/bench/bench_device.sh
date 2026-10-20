@@ -80,6 +80,9 @@ if [ -n "$FPS" ]; then
 fi
 # AUDIODUMP=1: the core appends the sound it pushes (raw int16 stereo) to $T/audio.raw
 # PERFLOG=1: the play log (core option Performance Log) to $T/saves/tqbench/perflog.csv
+# DSPTAP=1: what RetroArch writes to /dev/dsp (after its resampler) to $T/dsp.raw (dsp_tap.so
+# from the bench folder, preloaded before libpadsp.so)
+[ "$DSPTAP" = 1 ] && cp "$(dirname "$0")/dsp_tap.so" $T/
 [ -n "$PERFLOG" ] && echo "tyrquake_perf_log = \"enabled\"" >> $T/core.opt
 echo "core options: $(grep -E "framerate|resolution" $T/core.opt | tr '\n' ' ')"
 cp $RA/.retroarch/retroarch.cfg $T/retroarch.cfg
@@ -109,7 +112,8 @@ ${RC:+audio_rate_control = "$([ "$RC" = 1 ] && echo true || echo false)"}
 ${RESAMPLER:+audio_resampler = "$RESAMPLER"}
 fps_show = "false"
 # the player's core/game overrides (config/TyrQuake/TyrQuake.cfg) must not apply here
-auto_overrides_enable = "false"
+# (OVERRIDES=1: they do, to test them)
+auto_overrides_enable = "$([ "$OVERRIDES" = 1 ] && echo true || echo false)"
 game_specific_options = "false"
 EOF
 
@@ -120,7 +124,7 @@ touch $T/started
 echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 cd $RA
 T0=\$(cut -d' ' -f1 /proc/uptime)
-${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }${AUDIODUMP:+TQ_AUDIO_DUMP=$T/audio.raw }HOME=$RA LD_PRELOAD=/mnt/SDCARD/miyoo/lib/libpadsp.so ./retroarch -v -c $T/retroarch.cfg \\
+${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }${AUDIODUMP:+TQ_AUDIO_DUMP=$T/audio.raw }${DSPTAP:+DSP_TAP=$T/dsp.raw }HOME=$RA LD_PRELOAD="${DSPTAP:+$T/dsp_tap.so }/mnt/SDCARD/miyoo/lib/libpadsp.so" ./retroarch -v -c $T/retroarch.cfg \\
 	--appendconfig $T/override.cfg ${MAXF:+--max-frames=$MAXF} -L $T/tyrquake_miyoo_libretro.so \\
 	"$CONTENT" > $T/log.txt 2>&1 &
 P=\$!

@@ -46,9 +46,10 @@ Steps:
      `1996 Quake.port`, and `1997 Quake hipnotic`, `1997 Quake rogue` and `2021 Quake dopa` for
      the mission packs and Dimension of the Past (see [Mission packs](#mission-packs)).
      Existing shortcuts with these names are replaced.
-   - RetroArch settings for the core, `Saves/CurrentProfile/config/TyrQuake/TyrQuake.cfg`:
-     *Audio Sync* on, the *sinc* resampler and the screen's 59.67 Hz refresh. It replaces an
-     existing file of that name, and the stock TyrQuake core reads it too (same name).
+   - RetroArch settings for this core,
+     `Saves/CurrentProfile/config/TyrQuake/FPS - Quake Collection (TyrQuake).cfg`: *Audio Sync*
+     on, the *sinc* resampler and the screen's 59.67 Hz refresh (see
+     [RetroArch settings](#retroarch-settings)).
 3. On the Miyoo: *Games → Ports → 1996 Quake*. Refresh the list from its menu if it doesn't show.
 
 The first start takes a few seconds longer: RetroArch rebuilds its list of cores (see below).
@@ -141,6 +142,32 @@ In RetroArch's quick menu, *Core Options*:
 - **Performance Log** (default off): see [Sound](#sound).
 
 Resolution and framerate take effect after restarting the game.
+
+### RetroArch settings
+
+The release sets three RetroArch settings for this core only, in
+`Saves/CurrentProfile/config/TyrQuake/FPS - Quake Collection (TyrQuake).cfg`:
+
+```
+audio_sync = "true"
+audio_resampler = "sinc"
+video_refresh_rate = "59.670000"
+```
+
+It is a *content directory override*: RetroArch reads it for content in a folder of that name,
+and this core's content is the shortcut in `Shortcuts/FPS - Quake Collection (TyrQuake)/`. The
+stock TyrQuake core loads `id1/pak0.pak` and doesn't get it, and a core override of yours
+(`TyrQuake.cfg`, shared by both cores) stays as it is, below this file. To change these
+settings, edit the file, or in RetroArch's quick menu use *Overrides → Save Content Directory
+Overrides*.
+
+- **Audio Sync** paces the game by the sound; without it RetroArch drops sound that doesn't fit
+  its buffer, which crackles.
+- **sinc**: RetroArch adjusts the sound's rate by up to 0.5 % to keep its buffer filled. Onion's
+  default *nearest* does that by repeating a sample (one in 200 at 0.5 %), a slight roughness on
+  high sounds; *sinc* interpolates. It costs about 0.15 ms a frame (measured in a timedemo).
+- **59.67 Hz** is the screen's real refresh rate (Onion's RetroArch assumes 60), which matches the
+  core's 59.67 fps.
 
 ## Sound
 

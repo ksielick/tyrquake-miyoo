@@ -7,7 +7,8 @@
 #   RetroArch/.retroarch/core_info/tyrquake_miyoo_libretro.info
 #   Roms/PORTS/Shortcuts/FPS - Quake Collection (TyrQuake)/1996 Quake.port
 #   (same folder) the mission pack / dopa shortcuts as .notfound (Onion's import enables them)
-#   Saves/CurrentProfile/config/TyrQuake/TyrQuake.cfg (RetroArch override: audio sync, 59.67 Hz)
+#   Saves/CurrentProfile/config/TyrQuake/FPS - Quake Collection (TyrQuake).cfg (RetroArch override
+#   for content in that shortcut folder, i.e. this core only: audio sync, sinc, 59.67 Hz)
 # No game data: the player brings id1/pak0.pak (and pak1.pak).
 set -e
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
@@ -26,9 +27,11 @@ cp "$CORE" "$STAGE/RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so"
 cp "$REPO/miyoo/card/tyrquake_miyoo_libretro.info" "$STAGE/RetroArch/.retroarch/cores/"
 cp "$REPO/miyoo/card/tyrquake_miyoo_libretro.info" "$STAGE/RetroArch/.retroarch/core_info/"
 cp "$REPO/miyoo/card/1996 Quake.port" "$REPO/miyoo/card/"*.notfound "$STAGE/$SC/"
-# RetroArch settings for this core (core override, shared with the stock TyrQuake core by name)
+# RetroArch settings for this core: a content directory override (config/<core name>/<folder of
+# the content>.cfg). Our content is the shortcut, so only games started from this folder get it;
+# the stock core loads id1/pak0.pak. (A core override, TyrQuake.cfg, would be shared by name.)
 mkdir -p "$STAGE/Saves/CurrentProfile/config/TyrQuake"
-cp "$REPO/miyoo/card/TyrQuake.cfg" "$STAGE/Saves/CurrentProfile/config/TyrQuake/"
+cp "$REPO/miyoo/card/FPS - Quake Collection (TyrQuake).cfg" "$STAGE/Saves/CurrentProfile/config/TyrQuake/"
 
 # Python's zipfile writes '/' separators (PowerShell 5's Compress-Archive writes '\')
 # (Windows' python3 may be the Store's stub: try each until one runs)

@@ -216,6 +216,9 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
   (applies to the stock core too; tried before: vsync + audio_latency 96, and audio_sync false →
   clicks). Old TyrQuake.opt in workspace `backup/20261019-hz/`; revert = restore it and delete
   TyrQuake.cfg.
+- 2026-10-20 (owner asked: settings for our core only): the same three lines also as the content
+  directory override `config/TyrQuake/FPS - Quake Collection (TyrQuake).cfg` (= the release's
+  file, see "RetroArch settings for this core only"). The owner's TyrQuake.cfg left as it was.
 - The shortcut on the card is still the one without the core_info.cache refresh.
 - History of the core file: md5 26a57e5b (611d543) → c39cf8a5 (cb36289, caches on both threads)
   → 43f87cab (1e7f291, savegame fix, lerp on) → 4e3da96e (00c76b0, save states) → fc33ab4d
@@ -605,6 +608,33 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
 - Installed 2026-10-20: core 5125416a (PGO+LTO, shots 59/59).
 - Owner (2026-10-20): with the filter the sound is "much more pleasant and soft".
 - Owner's last play log with core 5125416a (153 s, e1m5/e1m1/start): 59.1 fps avg, 1.2 % of frames over the budget, limiter active in 92 s (lowest 0.31 = -10 dB, median of the per-second minima 0.68), music decoder never behind, 64-70 °C. Play log then turned off on the card (TyrQuake.opt perf_log disabled, the empty perflog.csv deleted).
+
+## RetroArch settings for this core only; sinc vs nearest (2026-10-20, owner asked)
+- Overrides live in `config/<library_name>/`, and both cores are "TyrQuake", so a core override
+  (TyrQuake.cfg) is shared. A content directory override, `config/TyrQuake/<parent folder of
+  the content>.cfg`, is ours alone: our content is the shortcut, so the folder is
+  `FPS - Quake Collection (TyrQuake)` (the owner's runtime log is named that too), the stock core's
+  is `id1`. Checked with bench `PORT=1 OVERRIDES=1` and a `Test.cfg`: "Content dir-specific
+  overrides found ... stacking on top of previous overrides" (after TyrQuake.cfg). The release
+  ships `miyoo/card/FPS - Quake Collection (TyrQuake).cfg` instead of TyrQuake.cfg. Changing
+  library_name instead would move saves, states and options away from the stock core's.
+- Bench `DSPTAP=1`: `miyoo/bench/dsp_tap.c` (LD_PRELOAD before libpadsp.so, built into
+  `build/tap/`) appends what RetroArch writes to /dev/dsp, i.e. after its resampler, to
+  /tmp/tqbench/dsp.raw; with AUDIODUMP=1 the core's own output is next to it. (dlsym pinned to
+  GLIBC_2.4: the 13.3 toolchain binds 2.34.)
+- demo3 640x480, SYNC=1 REFRESH=59.67 FPS=59.67, core 69294ffb (timedemo: fixed steps, so the
+  core hands over 47 710 samples/s and rate control sits at its +0.5 % limit):
+  - CPU: main thread 12.30 ms/frame with sinc, 12.14 with nearest (sinc ~0.16 ms; the earlier
+    "1-2 ms" guess was wrong). Late frames 127 vs 133 over 20 ms: same.
+  - nearest: exact copies of the core's frames, one repeated every 200 (995 in 200 000 = the
+    0.5 %): a 240 Hz timing jitter. Against ideal band-limited resampling its error is median
+    -33 dB of the signal, sinc's -39 dB (that's the fit's floor; sinc is likely cleaner).
+  - No dropouts or extra silence with either; the largest jumps between samples are the core's.
+  - sinc overshoots between samples: frames at full scale 424 vs the core's 221 (the limiter's
+    ceiling is full scale). True peak of the core's output +0.04 dB (32 931), so the clipped part
+    is <= 0.5 % of full scale in single samples: inaudible. A limiter ceiling ~0.1 dB lower would
+    remove it.
+  - Kept sinc (Onion's quality setting 2).
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
