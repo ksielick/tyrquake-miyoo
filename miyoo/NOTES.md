@@ -204,9 +204,9 @@ the core looks for `music/trackNN.*` inside the game dirs (id1/music) — not fo
 - Target: the panel refreshes at 59.67 Hz → 16.76 ms per frame for every frame, not on average.
 
 ## Installed on the card (2026-10-19, owner asked)
-- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 4a500e2b =
-  the core sources of ee6132b (unchanged up to d6dcf3b) built with PGO + LTO** (pgo.sh, r_misc.c
-  out of LTO; before it: a81e88ab, PGO only), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
+- **Now (2026-10-20): `RetroArch/.retroarch/cores/tyrquake_miyoo_libretro.so` md5 91afb028 =
+  3ace1ed (play log) built with PGO + LTO** (pgo.sh; shots 59/59; before it: 4a500e2b = ee6132b
+  PGO + LTO, a81e88ab PGO only), and `.info` ("Quake (TyrQuake-Miyoo)", also in `core_info/`). The stock
   `tyrquake_libretro.so` is untouched.
 - Card settings for the 59.67 Hz test: `Saves/CurrentProfile/config/TyrQuake/TyrQuake.opt`
   tyrquake_framerate 40 → "59.67" (Slow Frames: default real time); core override
@@ -511,6 +511,9 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   `<ws>/build/perflog/` (and empties it), prints totals, a per-map table, the worst seconds,
   music gaps, the loudest (clipped) seconds, and a 4-panel chart PNG next to the CSV.
 - bench `PERFLOG=1` turns it on (file in /tmp/tqbench/saves/tqbench/perflog.csv).
+- Card (owner asked, 2026-10-20): core 91afb028 installed, `tyrquake_perf_log = "enabled"` in
+  TyrQuake.opt, `bgmvolume "1"` in id1/config.cfg (was 0; volume 0.7 kept); both files backed
+  up in `Roms/PORTS/Games/TyrQuake-bench/backup-20261020-perflog/`.
 - The owner's Quake config now has `bgmvolume 0` (music off), so benches copy that: use
   `CFG="bgmvolume 1"` for music.
 - First findings (SYNC=1 FPS=59.67 timedemo_realsteps 1 bgmvolume 1, core baa6adda):
