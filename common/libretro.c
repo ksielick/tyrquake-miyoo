@@ -907,6 +907,7 @@ static const float supported_framerates[] = {
    15.0f,
    20.0f,
    25.0f,
+   29.835f,	/* half the Miyoo Mini panel: each frame held two refreshes */
    30.0f,
    40.0f,
    50.0f,
@@ -1031,6 +1032,33 @@ static void update_variables(bool startup)
 
    var.key = "tyrquake_framerate";
    var.value = NULL;
+
+   /* Changed while running (tqrun's menu, branch standalone): taken at once
+    * when the frontend accepts the new timing (SET_SYSTEM_AV_INFO), else at
+    * the next start as before.  The sample rate stays: Quake's mixer and the
+    * frame's share of samples follow frame_step. */
+   if (!startup && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value
+         && strcmp(var.value, "auto"))
+   {
+      float fr = sanitise_framerate((float)atof(var.value));
+      if (fr != framerate)
+      {
+         struct retro_system_av_info av;
+         float old = framerate;
+
+         framerate = fr;
+         retro_get_system_av_info(&av);
+         if (environ_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &av))
+         {
+            frametime_usec = 1000.0f / framerate;
+            if (perf_log_path[0] && perf_log_wanted)
+               perf_timing_set_log(perf_log_path, framerate);
+            log_cb(RETRO_LOG_INFO, "Framerate: %.3f fps\n", framerate);
+         }
+         else
+            framerate = old;
+      }
+   }
 
    if (startup)
    {

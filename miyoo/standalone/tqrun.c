@@ -114,6 +114,40 @@ static void opt_set(const char *key, const char *value, int from_file)
    o->from_file = from_file;
 }
 
+static const char *opt_get(const char *key, const char *fallback)
+{
+   struct opt *o = opt_find(key);
+   return o ? o->value : fallback;
+}
+
+static const char *opt_path;	/* the options file: the menu's choices are written back to it */
+static int opts_changed;	/* the core reads its options again (GET_VARIABLE_UPDATE) */
+
+/* the options the file had plus the menu's, back into the file (tmp + rename) */
+static void opts_save(void)
+{
+   char tmp[600];
+   FILE *f;
+   int i;
+
+   if (!opt_path)
+      return;
+   snprintf(tmp, sizeof(tmp), "%s.tmp", opt_path);
+   if (!(f = fopen(tmp, "w")))
+      return;
+   for (i = 0; i < num_opts; i++)
+      if (opts[i].from_file)
+         fprintf(f, "%s = \"%s\"\n", opts[i].key, opts[i].value);
+   if (fflush(f) || fsync(fileno(f)))
+   {
+      fclose(f);
+      remove(tmp);
+      return;
+   }
+   fclose(f);
+   rename(tmp, opt_path);
+}
+
 /* key = "value" lines */
 static void opts_load(const char *path)
 {
@@ -169,6 +203,20 @@ static pthread_mutex_t present_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t present_cond = PTHREAD_COND_INITIALIZER;
 static pthread_t present_thread;
 static int vsync = 1;
+static int play_mode;	/* started with -V 1: the panel's pacing follows the core's framerate */
+static int present_hold;	/* refreshes each frame stays on beyond the first (1: 30 fps) */
+
+/* the menu's FPS: 30 = 29.835 (two refreshes a frame), 60 = 59.67 (one), UNLIMITED = the game
+ * at its own speed (fps 120 with real-time steps), shown at the panel's pace without waiting */
+static void present_follow_fps(double fps)
+{
+   if (!play_mode)
+      return;
+   vsync = fps < 100.0;
+   present_hold = fps < 45.0 ? 1 : 0;
+   fprintf(stderr, "tqrun: %.3f fps: %s\n", fps,
+         !vsync ? "not waiting for the panel" : present_hold ? "each frame two refreshes" : "each frame one refresh");
+}
 
 /* statistics */
 static double st_convert_usec, st_pan_usec, st_vwait_usec, st_awrite_usec, st_run_usec;
@@ -368,6 +416,15 @@ static void *present_proc(void *arg)
       t1 = now_usec();
       fb_var.yoffset = page * SCREEN_H;
       ioctl(fb_fd, FBIOPAN_DISPLAY, &fb_var);	/* waits for the panel's next refresh */
+      {
+         /* 30 fps: the frame stays a refresh longer (only this thread waits for the panel) */
+         int i, hold = present_hold;
+         for (i = 0; i < hold; i++)
+         {
+            uint32_t zero = 0;
+            ioctl(fb_fd, FBIO_WAITFORVSYNC, &zero);
+         }
+      }
       t2 = now_usec();
       fb_shown = page;
 
@@ -535,7 +592,7 @@ static void audio_init(void)
       fprintf(stderr, "tqrun: /dev/dsp setup failed\n");
    if (rate != OUT_RATE)
       fprintf(stderr, "tqrun: /dev/dsp runs at %d Hz, not %d\n", rate, OUT_RATE);
-   if (!audio_sync && !vsync)
+   if (!audio_sync && !play_mode)
       fcntl(dsp_fd, F_SETFL, fcntl(dsp_fd, F_GETFL) | O_NONBLOCK);
 }
 
@@ -728,7 +785,7 @@ static size_t RETRO_CALLCONV audio_batch(const int16_t *data, size_t frames)
    st_audio_frames += frames;
    if (dsp_fd < 0)
       return frames;
-   if (vsync)
+   if (play_mode)	/* the ring whatever the menu's FPS: the panel or the game paces, never the sound */
    {
       ring_start();
       ring_push(data, frames);
@@ -948,7 +1005,12 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void *data)
       return o != NULL;
    }
    case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-      *(bool *)data = false;
+      *(bool *)data = opts_changed != 0;
+      opts_changed = 0;
+      return true;
+   case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
+      /* the framerate changed while running (the menu's FPS) */
+      present_follow_fps(((const struct retro_system_av_info *)data)->timing.fps);
       return true;
    case RETRO_ENVIRONMENT_SET_MESSAGE:
       fprintf(stderr, "[MSG] %s\n", ((const struct retro_message *)data)->msg);
@@ -980,6 +1042,7 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void *data)
  * new file, synced, then renamed over the old one, so a power-off in the middle keeps the last
  * good state. A state from another build of the core isn't loaded: it is kept as .rejected. */
 static const char *state_path;	/* the resume state; the menu's slots are <state_path>1..9 */
+static char **saved_argv;	/* for the restart after a new resolution */
 static char state_build[64];	/* the core file's size and time: a rebuilt core rejects old states */
 
 #define STATE_MAGIC "TQRS0001"
@@ -1212,33 +1275,91 @@ static void menu_show(const uint16_t *pic)
    video_refresh(fb.data, SCREEN_W, SCREEN_H, SCREEN_W * 2);
 }
 
-enum { MI_RESUME, MI_SAVE, MI_LOAD, MI_EXIT, MI_COUNT };
+enum { MI_RESUME, MI_SAVE, MI_LOAD, MI_RES, MI_FPS, MI_EXIT, MI_COUNT };
+
+/* RESOLUTION: the core's tyrquake_resolution, read at its start: a change restarts the game
+ * (the resume state brings the player back). FPS: tyrquake_framerate, taken at once by the core
+ * (SET_SYSTEM_AV_INFO): 30 is half the panel's 59.67 Hz, UNLIMITED is 200 (with real-time steps
+ * the game then runs at its own speed). Both are written back to the options file. */
+static const char *const res_values[] = { "640x480", "320x240" };
+static const char *const fps_values[] = { "29.835", "59.67", "200" };
+static const char *const fps_labels[] = { "30", "60", "UNLIMITED" };
+#define NUM_RES (int)(sizeof(res_values) / sizeof(res_values[0]))
+#define NUM_FPS (int)(sizeof(fps_values) / sizeof(fps_values[0]))
+static char running_res[128];	/* the resolution the core started with */
+static int restart_request;	/* leaving the menu restarts tqrun (resolution) */
+
+static int res_index(void)
+{
+   const char *v = opt_get("tyrquake_resolution", "640x480");
+   int i;
+   for (i = 0; i < NUM_RES; i++)
+      if (!strcmp(v, res_values[i]))
+         return i;
+   return -1;
+}
+
+static int fps_index(void)
+{
+   double f = atof(opt_get("tyrquake_framerate", "59.67"));
+   return f < 45.0 ? 0 : f < 100.0 ? 1 : 2;
+}
 
 static void menu_compose(uint16_t *pic, int cur, int slot, int confirm)
 {
-   static const char *names[MI_COUNT] = { "RESUME", "SAVE STATE", "LOAD STATE", "EXIT GAME" };
-   char line[48], path[600];
-   int i, y0 = 140;
+   static const char *names[MI_COUNT] = { "RESUME", "SAVE STATE", "LOAD STATE", "RESOLUTION", "FPS", "EXIT GAME" };
+   char line[160], path[600];
+   int i, y0 = 116, step = 48;
 
    memcpy(pic, menu_bg, SCREEN_W * SCREEN_H * 2);
-   draw_text_c(pic, 64, 3, "QUAKE", RGB565(200, 160, 90));
+   draw_text_c(pic, 48, 3, "QUAKE", RGB565(200, 160, 90));
    for (i = 0; i < MI_COUNT; i++)
    {
       uint16_t c = i == cur ? RGB565(255, 220, 64) : RGB565(170, 170, 170);
+      const char *mark = i == cur ? "> " : "";
       if (i == MI_SAVE || i == MI_LOAD)
       {
          slot_path(path, sizeof(path), slot);
-         snprintf(line, sizeof(line), "%s%s  < %d >%s", i == cur ? "> " : "", names[i], slot,
+         snprintf(line, sizeof(line), "%s%s  < %d >%s", mark, names[i], slot,
                i == MI_LOAD && !(state_path && state_exists(path)) ? " EMPTY" : "");
       }
+      else if (i == MI_RES)
+      {
+         int r = res_index();
+         snprintf(line, sizeof(line), "%s%s  < %s >", mark, names[i],
+               r >= 0 ? res_values[r] : opt_get("tyrquake_resolution", "?"));
+      }
+      else if (i == MI_FPS)
+         snprintf(line, sizeof(line), "%s%s  < %s >", mark, names[i], fps_labels[fps_index()]);
       else
-         snprintf(line, sizeof(line), "%s%s", i == cur ? "> " : "", names[i]);
-      draw_text_c(pic, y0 + i * 56, 3, line, c);
+         snprintf(line, sizeof(line), "%s%s", mark, names[i]);
+      draw_text_c(pic, y0 + i * step, 3, line, c);
    }
    if (confirm)
-      draw_text_c(pic, y0 + MI_COUNT * 56 + 16, 2, "ARE YOU SURE? A: YES  B: NO", RGB565(255, 96, 64));
+      draw_text_c(pic, 420, 2, "ARE YOU SURE? A: YES  B: NO", RGB565(255, 96, 64));
+   else if (restart_request)
+      draw_text_c(pic, 420, 2, "NEW RESOLUTION: THE GAME RESTARTS", RGB565(255, 160, 64));
    else
-      draw_text_c(pic, 440, 2, "A: SELECT  B: BACK", RGB565(140, 140, 140));
+      draw_text_c(pic, 448, 2, "A: SELECT  B: BACK", RGB565(140, 140, 140));
+}
+
+/* left/right on RESOLUTION or FPS */
+static void menu_change_option(int item, int dir)
+{
+   if (item == MI_RES)
+   {
+      int r = res_index();
+      r = r < 0 ? 0 : (r + dir + NUM_RES) % NUM_RES;
+      opt_set("tyrquake_resolution", res_values[r], 1);
+      restart_request = strcmp(res_values[r], running_res) != 0;
+   }
+   else
+   {
+      int f = (fps_index() + dir + NUM_FPS) % NUM_FPS;
+      opt_set("tyrquake_framerate", fps_values[f], 1);
+      opts_changed = 1;	/* the core takes it at its next frame */
+   }
+   opts_save();
 }
 
 /* the menu's own key reading: presses only */
@@ -1331,10 +1452,14 @@ static void menu_run(void)
       case KEY_LEFT:
          if (cur == MI_SAVE || cur == MI_LOAD)
             slot = slot > 1 ? slot - 1 : 9;
+         else if (cur == MI_RES || cur == MI_FPS)
+            menu_change_option(cur, -1);
          break;
       case KEY_RIGHT:
          if (cur == MI_SAVE || cur == MI_LOAD)
             slot = slot < 9 ? slot + 1 : 1;
+         else if (cur == MI_RES || cur == MI_FPS)
+            menu_change_option(cur, 1);
          break;
       case KEY_LEFTCTRL:	/* B */
       case KEY_ESC:	/* Menu */
@@ -1344,6 +1469,8 @@ static void menu_run(void)
       case KEY_ENTER:	/* START */
          if (cur == MI_RESUME)
             done = 1;
+         else if (cur == MI_RES || cur == MI_FPS)
+            menu_change_option(cur, 1);
          else if (cur == MI_SAVE)
          {
             int r;
@@ -1418,7 +1545,7 @@ static void *core_sym(void *h, const char *name)
 
 int main(int argc, char **argv)
 {
-   const char *core_path = NULL, *opt_path = NULL, *content;
+   const char *core_path = NULL, *content;
    unsigned long max_frames = 0;
    char self_dir[512], default_core[600];
    struct retro_game_info game;
@@ -1445,6 +1572,8 @@ int main(int argc, char **argv)
          return 2;
       }
    }
+   play_mode = vsync;
+   saved_argv = argv;
    if (optind >= argc)
    {
       fprintf(stderr, "tqrun: no content\n");
@@ -1519,6 +1648,8 @@ int main(int argc, char **argv)
    }
    core.set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
    core.get_system_av_info(&av);
+   present_follow_fps(av.timing.fps);
+   snprintf(running_res, sizeof(running_res), "%s", opt_get("tyrquake_resolution", "640x480"));
    fprintf(stderr, "tqrun: %ux%u, %.2f fps, sound %.0f Hz, vsync %d, audio sync %d\n",
          av.geometry.base_width, av.geometry.base_height, av.timing.fps, av.timing.sample_rate,
          vsync, audio_sync);
@@ -1560,7 +1691,11 @@ int main(int argc, char **argv)
       if (++runs == 1)
          state_load_from(state_path);
       if (menu_request && !quit)
+      {
          menu_run();
+         if (restart_request && !quit)
+            quit = 2;	/* a new resolution: save, then start again (below) */
+      }
       if (sleep_save_request)
       {
          /* POWER: written before Onion's sleep, which may end in a power-off */
@@ -1614,6 +1749,18 @@ int main(int argc, char **argv)
             "pan %.2f ms per shown frame; sound %lu frames, %lu dropped\n",
             st_presented, st_dropped, st_dupes, st_convert_usec / np / 1000.0,
             st_pan_usec / np / 1000.0, st_audio_frames, st_audio_dropped);
+   }
+   if (quit == 2)
+   {
+      /* the core reads its resolution only at its start: the same program again, with the
+       * same arguments and environment (LD_PRELOAD); the resume state puts the player back */
+      fprintf(stderr, "tqrun: restarting for the new resolution\n");
+      fflush(stderr);
+      if (input_fd >= 0)
+         close(input_fd);
+      execv("/proc/self/exe", saved_argv);
+      fprintf(stderr, "tqrun: restart failed: %s\n", strerror(errno));
+      return 1;
    }
    return 0;
 }

@@ -10,7 +10,11 @@ CD tracks as id1/music/track02.ogg ... track11.ogg. If you already set up Quake 
 Ports Collection (Roms/PORTS/Games/Quake Collection (TyrQuake)/id1), that data is used.
 
 Buttons: as in the RetroArch version. Menu opens this port's menu:
-  RESUME, SAVE STATE / LOAD STATE (slots 1-9, left/right), EXIT GAME.
+  RESUME, SAVE STATE / LOAD STATE (slots 1-9, left/right),
+  RESOLUTION (640x480, 320x240: the game restarts and comes back where you were),
+  FPS (30: every frame shown for two of the screen's refreshes; 60: one; UNLIMITED: the game
+  runs as fast as it can, the screen still shows up to 59.67 a second), EXIT GAME.
+  RESOLUTION and FPS are kept in tyrquake.opt.
 Leaving with EXIT GAME, turning the console off or putting it to sleep keeps your place:
 the next start puts you back there. Quitting from Quake's own menu starts afresh next time.
 Quake's own savegames work as usual.
