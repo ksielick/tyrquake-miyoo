@@ -192,6 +192,7 @@ static uint32_t *fb_mem;
 static size_t fb_page_px;	/* pixels in one page */
 static struct fb_var_screeninfo fb_var;
 static int fb_shown;	/* the page on screen */
+static uint32_t fb_yoffset0;	/* the page on screen when tqrun started: shown again at the end */
 
 static unsigned frame_w = SCREEN_W, frame_h = SCREEN_H;
 
@@ -296,6 +297,12 @@ static struct
    int32_t (*blit)(mi_surface *src, mi_rect *src_rect, mi_surface *dst, mi_rect *dst_rect,
          mi_opt *opt, uint16_t *fence);
    int32_t (*wait)(uint8_t all, uint16_t fence);
+   /* the way out: without them Onion's SDL apps started later (Battery Monitor) showed a black
+    * page until a reboot */
+   int32_t (*munmap)(void *virt, uint32_t size);
+   int32_t (*mma_free)(mi_phy phys);
+   int32_t (*close)(void);
+   int32_t (*sys_exit)(void);
 } mi;
 static int use_gfx;
 static mi_phy fb_phys, lend_phys[2];
@@ -344,6 +351,29 @@ static int gfx_blit(mi_phy src, unsigned w, unsigned h, size_t pitch, int page)
    return 1;
 }
 
+static int gfx_opened, lend_alloced[2];
+
+/* everything gfx_init got back to the system; the CPU path's buffers stay as they were */
+static void gfx_shutdown(void)
+{
+   int i;
+   if (!gfx_opened)
+      return;
+   for (i = 0; i < 2; i++)
+   {
+      if (lend_buf[i])	/* while gfx_opened, the lent buffers are MMA mappings */
+         mi.munmap(lend_buf[i], SCREEN_W * SCREEN_H * 2);
+      lend_buf[i] = NULL;
+      if (lend_alloced[i])
+         mi.mma_free(lend_phys[i]);
+      lend_alloced[i] = 0;
+   }
+   mi.close();
+   mi.sys_exit();
+   gfx_opened = 0;
+   use_gfx = 0;
+}
+
 static void gfx_init(struct fb_fix_screeninfo *fix)
 {
    const char *e = getenv("TQ_GFX");
@@ -366,20 +396,33 @@ static void gfx_init(struct fb_fix_screeninfo *fix)
    *(void **)&mi.open = dlsym(hg, "MI_GFX_Open");
    *(void **)&mi.blit = dlsym(hg, "MI_GFX_BitBlit");
    *(void **)&mi.wait = dlsym(hg, "MI_GFX_WaitAllDone");
-   if (!mi.sys_init || !mi.mma_alloc || !mi.mmap || !mi.flush || !mi.open || !mi.blit || !mi.wait)
+   *(void **)&mi.munmap = dlsym(hs, "MI_SYS_Munmap");
+   *(void **)&mi.mma_free = dlsym(hs, "MI_SYS_MMA_Free");
+   *(void **)&mi.close = dlsym(hg, "MI_GFX_Close");
+   *(void **)&mi.sys_exit = dlsym(hs, "MI_SYS_Exit");
+   if (!mi.sys_init || !mi.mma_alloc || !mi.mmap || !mi.flush || !mi.open || !mi.blit || !mi.wait
+         || !mi.munmap || !mi.mma_free || !mi.close || !mi.sys_exit)
    {
       fprintf(stderr, "tqrun: MI_GFX functions missing, the CPU converts the frames\n");
       return;
    }
    mi.sys_init();
    mi.open();
+   gfx_opened = 1;
    for (i = 0; i < 2; i++)
    {
       void *virt = NULL;
-      if (mi.mma_alloc(NULL, SCREEN_W * SCREEN_H * 2, &lend_phys[i])
-            || mi.mmap(lend_phys[i], SCREEN_W * SCREEN_H * 2, &virt, 1))
+      if (mi.mma_alloc(NULL, SCREEN_W * SCREEN_H * 2, &lend_phys[i]))
       {
          fprintf(stderr, "tqrun: no MMA memory, the CPU converts the frames\n");
+         gfx_shutdown();
+         return;
+      }
+      lend_alloced[i] = 1;
+      if (mi.mmap(lend_phys[i], SCREEN_W * SCREEN_H * 2, &virt, 1))
+      {
+         fprintf(stderr, "tqrun: no MMA memory, the CPU converts the frames\n");
+         gfx_shutdown();
          return;
       }
       memset(virt, 0, SCREEN_W * SCREEN_H * 2);
@@ -467,6 +510,7 @@ static int video_init(void)
       fprintf(stderr, "tqrun: fb0 mmap: %s\n", strerror(errno));
       return 0;
    }
+   fb_yoffset0 = fb_var.yoffset;
    fb_shown = fb_var.yoffset >= SCREEN_H ? 1 : 0;
    memset(fb_mem + (fb_shown ^ 1) * fb_page_px, 0, fb_page_px * 4);
 
@@ -486,6 +530,9 @@ static void video_shutdown(void)
    pthread_cond_broadcast(&present_cond);
    pthread_mutex_unlock(&present_mutex);
    pthread_join(present_thread, NULL);
+   if (use_gfx)
+      mi.wait(1, 0);
+   gfx_shutdown();
    if (fb_mem)
    {
       /* a black screen until Onion's menu draws again */
@@ -493,7 +540,12 @@ static void video_shutdown(void)
       munmap(fb_mem, fb_page_px * 4 * 2);
    }
    if (fb_fd >= 0)
+   {
+      /* the page that was on screen at the start */
+      fb_var.yoffset = fb_yoffset0;
+      ioctl(fb_fd, FBIOPAN_DISPLAY, &fb_var);
       close(fb_fd);
+   }
 }
 
 /* the buffer the core may draw into: the one the present thread isn't reading */

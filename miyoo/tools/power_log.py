@@ -5,7 +5,8 @@
 Default csv: the card's Roms/PORTS/Games/TyrQuake-bench/power_log.csv over SMB. Rows are grouped
 into stretches of one mode (tqrun running + resolution + framerate); for each: duration, CPU %
 (both cores together, from /proc/stat deltas), clock, temperature at the start / end / max, and
-battery percent and voltage at the start and end (with the drain per hour where long enough).
+battery percent and voltage at the start and end (with the drain per hour where long enough), and
+from the power chip (axp_probe columns, when present) the average discharge current and power.
 """
 import csv
 import sys
@@ -50,6 +51,11 @@ def main():
                "battery %d -> %d %%, %d -> %d mV" % (
                    s["mode"], dt / 60, cpu, min(khz) // 1000, max(khz) // 1000,
                    temps[0], temps[-1], max(temps), b0, b1, v0, v1)
+        mas = [(float(r["ma"]), float(r["mv_avg"])) for r in rs[1:] if r.get("ma")]
+        if mas:
+            ma = sum(m for m, _ in mas) / len(mas)
+            w = sum(m * v for m, v in mas) / len(mas) / 1e6
+            line += "  %4.0f mA %.2f W" % (ma, w)
         if dt >= 600 and not chg:
             line += "  (%.1f %%/h)" % ((b0 - b1) * 3600 / dt)
         if chg:

@@ -5,14 +5,17 @@
 #   setsid sh /mnt/SDCARD/Roms/PORTS/Games/TyrQuake-bench/power_log.sh [seconds] </dev/null >/dev/null 2>&1 &
 # Stop: touch /mnt/SDCARD/power_log.stop (or kill it). Output: Roms/PORTS/Games/TyrQuake-bench/power_log.csv (SMB share Roms)
 # Columns: uptime_s, cpu jiffies (busy, total: /proc/stat's first line), clock kHz, temp C,
-# battery %, voltage mV, charging, tqrun running (0/1), resolution, framerate. CPU % = delta busy /
-# delta total between rows (both cores together).
+# battery %, voltage mV, charging, tqrun running (0/1), resolution, framerate, then from axp_probe
+# (next to this script; the power chip read over I2C, read only) averaged over the interval:
+# battery mV, discharge mA (average, min, max), charge mA. CPU % = delta busy / delta total
+# between rows (both cores together).
 EVERY=${1:-5}
 OUT=/mnt/SDCARD/Roms/PORTS/Games/TyrQuake-bench/power_log.csv
 STOP=/mnt/SDCARD/power_log.stop
 OPT=/mnt/SDCARD/Roms/PORTS/Games/TyrQuake-Miyoo/tyrquake.opt
+PROBE=$(dirname "$0")/axp_probe
 rm -f $STOP
-[ -f $OUT ] || echo "uptime,busy,total,khz,temp,battery,mv,charging,tqrun,resolution,framerate" > $OUT
+[ -f $OUT ] || echo "uptime,busy,total,khz,temp,battery,mv,charging,tqrun,resolution,framerate,mv_avg,ma,ma_min,ma_max,chg_ma" > $OUT
 while [ ! -f $STOP ]; do
 	up=$(cut -d' ' -f1 /proc/uptime)
 	set -- $(head -1 /proc/stat)
@@ -29,7 +32,8 @@ while [ ! -f $STOP ]; do
 	pidof tqrun >/dev/null 2>&1 && tq=1
 	res=$(sed -n 's/^tyrquake_resolution = "\(.*\)"/\1/p' $OPT 2>/dev/null)
 	fps=$(sed -n 's/^tyrquake_framerate = "\(.*\)"/\1/p' $OPT 2>/dev/null)
-	echo "$up,$busy,$total,$khz,$temp,$pct,$mv,$chg,$tq,$res,$fps" >> $OUT
-	sleep $EVERY
+	# the interval itself: 5 samples a second, averaged
+	pm=$("$PROBE" avg $((EVERY * 5)) 200 2>/dev/null) || { pm=""; sleep $EVERY; }
+	echo "$up,$busy,$total,$khz,$temp,$pct,$mv,$chg,$tq,$res,$fps,$(echo $pm | tr ' ' ',')" >> $OUT
 done
 rm -f $STOP

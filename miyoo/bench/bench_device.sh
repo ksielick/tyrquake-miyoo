@@ -132,6 +132,12 @@ cat > $T/run.sh <<EOF
 #!/bin/sh
 touch $T/started
 echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+$(if [ -n "$MAXFREQ" ] && [ "$MAXFREQ" -gt 1200000 ]; then
+	echo "/mnt/SDCARD/.tmp_update/bin/cpuclock $((MAXFREQ / 1000)) > /dev/null"
+elif [ -n "$MAXFREQ" ]; then
+	echo "echo $MAXFREQ > /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq"
+fi)
+/mnt/SDCARD/.tmp_update/bin/cpuclock > $T/clock.txt 2>&1
 cd $RA
 T0=\$(cut -d' ' -f1 /proc/uptime)
 $(if [ "$FRONT" = tqrun ]; then
@@ -188,6 +194,7 @@ while [ $i -lt 10 ]; do
 	sleep 1
 	i=$((i + 1))
 done
+GOV0=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)
 echo "sh $T/run.sh" > /tmp/cmd_to_run.sh
 killall MainUI
 i=0
@@ -196,6 +203,17 @@ while [ ! -f $T/started ] && [ $i -lt 20 ]; do sleep 1; i=$((i + 1)); done
 while [ ! -f $T/done ] && [ $i -lt $((WATCHDOG + 30)) ]; do sleep 1; i=$((i + 1)); done
 # give runtime.sh a moment to bring MainUI back
 sleep 3
+# MAXFREQ=600000/800000/...: the clock cap for the run (performance governor), back to the top after
+# (above 1200000: Onion's cpuclock sets the PLL directly, governor userspace, no voltage change;
+# back with cpuclock 1200 and the governor the menu had)
+if [ -n "$MAXFREQ" ]; then
+	echo "clock cap $MAXFREQ kHz, PLL during the run: $(cat $T/clock.txt) MHz"
+	if [ "$MAXFREQ" -gt 1200000 ]; then
+		/mnt/SDCARD/.tmp_update/bin/cpuclock 1200 > /dev/null
+		echo "$GOV0" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+	fi
+	echo 1200000 > /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+fi
 
 cat $T/result.txt 2>/dev/null || {
 	echo "no result: started=$([ -f $T/started ] && echo yes || echo no)" \

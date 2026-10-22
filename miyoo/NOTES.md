@@ -819,6 +819,39 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
       a flush (the imbalance, ≤ ~1 ms a frame); between frames every thread sleeps (condvars,
       blocking ioctl/write): 11.6 % CPU at 30 fps agrees. A futex wait would save little.
     - Panel at 30 Hz: not offered by the driver. Background daemons: 2.2 % CPU idle in the menu.
+  - Clock and overclock (2026-10-22, owner asked; bench MAXFREQ=<kHz>: up to 1200000 a
+    scaling_max_freq cap under the performance governor, above it Onion's
+    `.tmp_update/bin/cpuclock <MHz>` (PLL written directly, governor userspace, no voltage
+    change; restored with cpuclock 1200 + the menu's governor); `cpuclock` without arguments
+    reads the PLL and is logged as "PLL during the run"):
+    - 320x240 @ 29.835 paced (demo3): 30 fps at every clock from 400 to 1600 MHz; work per
+      frame 15.9 ms at 400, 10.5 at 600, 9.2 at 800, 6.4 at 1200 (p99 38 ms at 400, ~35 above).
+    - 640x480 unpaced demo3: 600 MHz 20.0 ms (50 fps), 800 15.5 (65), 1000 13.0 (77), 1200 11.2
+      (89), 1300 10.5 (95), 1400 10.0 (100), 1500 9.6 (104), 1600 9.2 (109; p99 14.9). +33 %
+      clock gives +22 % fps (memory doesn't speed up). demo1/demo2 at 1600: 112 / 118 fps.
+  - Power, measured properly (owner's USB meter on the charger, battery charging at constant
+    current; the console's share = meter × 5.16 V − Vbat × charge current, the AXP's charge
+    current reading being right: 1443 mA agreed with the meter): menu 2.2 W; 640x480 full load
+    2.6 W at 1200 MHz, 2.7 W at 1600 MHz; 320x240 @ 30 2.3 W at both 1200 and 600 MHz (meter
+    steps 0.01 A ≈ 50 mW, read by hand; includes charger losses). Screen, backlight, Wi-Fi and
+    the rest dominate; at 30 fps the clock doesn't matter. Overclocked it runs warmer (68-71 °C
+    vs 67-68), partly the charging.
+  - AXP221 power chip (miyoo/tools/axp_probe.c, read only, /dev/i2c-1 0x34, found by
+    disassembling Miyoo's axp_test: it reads 0x00/0x01 status, 0x78/0x79 voltage, 0xB9 %, 0x82
+    ADC enable = 0xE0): the charge current (0x7A/0x7B, 12 bit, 1 mA) is right; the discharge
+    current (0x7C/0x7D) reads ~500 mA whatever the load (also at 1600 MHz full load): don't
+    use it for load changes. power_log.sh logs both; per-run summary in the session scratchpad
+    (power_runs.py), not kept.
+  - Don't leave power_log.sh running: dethrace-miyoo's rules (GEMINI.md) forbid background
+    PMIC/battery logging during normal use (it competes with batmon / Battery Monitor on I2C).
+    Stop: touch /mnt/SDCARD/power_log.stop.
+  - Bug found and fixed (tqrun fc444b7a, on the card): after any tqrun run, Onion's Battery
+    Monitor (SDL 1.2, App/BatteryMonitorUI) showed a black screen until a reboot: its graph was
+    drawn on fb page 0 while page 1 (y=480, fb 640x1440) was shown. tqrun never released the MI
+    side: now video_shutdown waits for the 2D engine, MI_SYS_Munmap + MI_SYS_MMA_Free the lent
+    buffers, MI_GFX_Close, MI_SYS_Exit, and pans back to the page shown at the start. Checked:
+    reboot → tqrun run → Battery Monitor fine (before the fix: black after one 300-frame run).
+    miyoo/tools/fbpan.c pans fb0 by hand (didn't help alone).
   - Onion and SSH/Samba (see the shared device memory): the services start only in runtime.sh's
     loop (boot, after a game or app exits), not when Wi-Fi is switched on in MainUI's settings:
     open and close any app (Tweaks, Port Manager) or a game afterwards. Onion's restore_state
