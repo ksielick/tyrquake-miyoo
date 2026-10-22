@@ -49,6 +49,14 @@ FPS folder.
   - **Show FPS**: the game's frames per second, top right.
 - Quake's own savegames work as usual; the first start copies the RetroArch version's
   savegames and settings.
+- **Cooler and easier on the battery** (measured with Wi-Fi off while playing):
+
+  | Mode | CPU busy (both cores) | Temperature | Battery |
+  |---|---|---|---|
+  | 320x240, 30 fps | 12 % | 59-64 °C | ~13 % an hour |
+  | 640x480, 60 fps | 49 % | 60-63 °C | ~15 % an hour |
+
+  RetroArch at 640x480 reached 70-75 °C. The battery figures are rough (whole percent steps).
 
 Install: unzip `TyrQuake-Miyoo-Standalone-<version>.zip` onto the SD card (or let Port Manager
 install it). Quake's data goes in `Roms/PORTS/Games/TyrQuake-Miyoo/id1/`; if Quake is already

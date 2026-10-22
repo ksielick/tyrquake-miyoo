@@ -806,6 +806,26 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     run started right off the charger: the battery figures are rough. Screen + rest of the SoC
     dominate; the governor keeps 1.1-1.2 GHz even at 12 % load (ondemand untested). Much cooler
     than RetroArch at 640x480 (70-75 °C).
+  - Ideas reviewed with the owner (2026-10-22, from a discussion with another AI):
+    - Lower clock per mode: the device offers 400/600/800/1000/1100/1200 MHz and the governors
+      userspace/powersave/ondemand/performance (no /sys/class/regulator: unknown whether the
+      core voltage follows the clock). Plan: a fixed scaling_max_freq per mode set by the port
+      (ondemand reacts late: stutter risk); first measure 320x240 @ 30 at 600 / 800 MHz (frame
+      times within 33.5 ms, temperature).
+    - Real power figures: /dev/i2c-0 and /dev/i2c-1 exist (no i2cget); AXP22x PMICs have a
+      battery discharge current ADC. Plan: a read-only probe (ioctl) to find the PMIC and read
+      it; no register writes without the owner's consent.
+    - d_mt.c's sched_yield() spins only while the main thread waits for the worker's half within
+      a flush (the imbalance, ≤ ~1 ms a frame); between frames every thread sleeps (condvars,
+      blocking ioctl/write): 11.6 % CPU at 30 fps agrees. A futex wait would save little.
+    - Panel at 30 Hz: not offered by the driver. Background daemons: 2.2 % CPU idle in the menu.
+  - Onion and SSH/Samba (see the shared device memory): the services start only in runtime.sh's
+    loop (boot, after a game or app exits), not when Wi-Fi is switched on in MainUI's settings:
+    open and close any app (Tweaks, Port Manager) or a game afterwards. Onion's restore_state
+    can't parse its one-line JSON and its disable_flag uses an unset "$flag_" (toggles never
+    cleared), so the two bugs cancel out. RedOnion (Amiga500/Onion, beta 10) keeps the toggles
+    deliberately, starts services after a running game and leaves Wi-Fi power save on; the owner
+    waits for its stable release instead of patching Onion.
   - Sound: "left out" grew to ~38 frames a second in these runs (841 in 22 s, 5369 in 100 s;
     earlier runs left out only a few): to look into.
 - Next for a standalone port: the 8 bpp → colours pass on the 2D engine too
