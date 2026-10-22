@@ -702,8 +702,8 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   - Menu button (Onion's keymon does nothing on Menu outside RetroArch/DraStic: MODE_APPS):
     tqrun's own menu over the dimmed last frame, 8x8 public-domain font (font8x8.h): RESUME,
     SAVE STATE / LOAD STATE slots 1-9 (left/right), EXIT GAME (LOAD/EXIT ask ARE YOU SURE?).
-    Notice "SAVED SLOT n" over the game for 2 s.
-  - Resume state `saves/quake.state` (slots quake.state1..9): written on EXIT GAME, SIGTERM
+    Notice "SAVED SLOT n" over the game for 2 s. (Slots removed again in ce8e06a, see below.)
+  - Resume state `saves/quake.state`: written on EXIT GAME, SIGTERM
     (Onion's power-off), POWER press (before Onion's sleep, which may end in a power-off) and once
     after 50 s without a button; tmp + fsync + rename; tied to the core file's contents (FNV-1a:
     a reinstalled same build matches; another build → .rejected). Loaded after the first
@@ -722,11 +722,52 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     (needs a release Port Manager can download: the repo is private).
   - Checked on the device: shortcut start → menu → EXIT GAME (screens fine); bench STATE=save
     (LOAD=s0, SIGTERM) then STATE=load: the same picture after the resume.
-  - Installed on the card for the owner (2026-10-22): Games/TyrQuake-Miyoo, Shortcuts/FPS.
+  - Installed on the card for the owner (2026-10-22): Games/TyrQuake-Miyoo, Shortcuts/FPS
+    (commit 8333b0e's tqrun, menu with save/load slots; the later commits aren't on the card).
+- Owner's first play (2026-10-22): sound louder than the RetroArch version (plays at Onion volume
+  50 %, the speaker can't take more); save/load state slots are too much: Quake's own saves +
+  Onion's Game Switcher are enough; asked for graphics options in the game's menu ("old-school"
+  feel); Wi-Fi came on during play (not ours: nothing in tqrun/launch.sh touches Wi-Fi; Onion's
+  runtime.sh only kills dropbear/smbd/... for games, the radio stays as set — asked the owner
+  whether it was off before).
+- Loudness: Onion's retroarch.cfg has audio_volume 0 dB, audio_driver oss through the same
+  libpadsp → audioserver path, and tqrun's played sound equals the core's output (dsp_tap), so
+  the difference must be elsewhere (Quake's volume/bgmvolume in config.cfg, Onion). To do on the
+  device: the same demo with DSPTAP=1 through RetroArch and through tqrun, compare levels (RMS,
+  peaks); compare saves/TyrQuake-Miyoo/id1/config.cfg with TyrQuake-Miyoo/saves/id1/config.cfg.
+- Menu as in Onion's RetroArch games (commit ce8e06a, not on the card yet):
+  - Onion's keymon acts on Menu only for RetroArch (MODE_GAME) and DraStic; for anything else
+    (MODE_APPS) it does nothing, so tqrun reads Menu itself.
+  - Short press: the resume state, a picture for the switcher, `touch
+    /mnt/SDCARD/.tmp_update/.runGameSwitcher`, exit; runtime.sh's check_switcher then runs
+    gameSwitcher instead of MainUI. The picture: `Saves/CurrentProfile/romScreens/<hash>.png`,
+    hash = Onion's FNV1A_Pippip_Yurii (utils/hash.h, reads 8 bytes past the end: pad) of the
+    first `"rompath"` in `Roms/recentlist.json` (or recentlist-hidden.json; type 5/17; a
+    "search:" prefix is cut at ':'), 640x480. tqrun writes it as a PNG with stored (uncompressed)
+    deflate blocks (~0.9 MB, no zlib). Picking the game in the switcher starts the shortcut
+    again → the resume state.
+  - Held 0.6 s: the port's menu: RESUME, RESOLUTION (640x480 / 320x240: written to
+    tyrquake.opt, the game saves and execv's itself, the resume state brings it back), FPS
+    (30 = 29.835, half the panel: the present thread waits one more FBIO_WAITFORVSYNC after the
+    pan; 60 = 59.67; UNLIMITED = 200 with real-time steps, no waiting for the panel), EXIT GAME.
+    The sound ring stays on in every FPS mode (play mode = started with -V 1).
+  - Core (commit 04a657e): framerate 29.835 added (option value and supported list); a changed
+    tyrquake_framerate is taken while running when the frontend accepts
+    RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO (tqrun does; RetroArch would too), else at the next
+    start. Resolution stays start-only (VID re-init would be a renderer rework).
+  - Not yet done because the console went offline (Wi-Fi/SSH timeouts at 10:05): pgo.sh +
+    shots for the changed core, the menu test through the real shortcut (stest3.sh in the
+    session scratchpad), pacing at 30 fps. build/core_pgo was restored to the release core
+    7a446a25 (backup build/core_pgo_ra_7a446a25) after the aborted PGO run overwrote it.
+- Owner's decision (2026-10-22): **remove the overlay menu entirely**; Menu = Game Switcher only;
+  RESOLUTION and FPS go into Quake's own menu as below. Proposal: in Quake's own Options →
+  "Video Options" (menu.c has the entry, hidden: vid_menudrawfn/vid_menukeyfn are NULL in the
+  libretro build), drawn like the 1996 DOS mode list; the core would hand the choice to the
+  frontend with RETRO_ENVIRONMENT_SET_VARIABLE (70) and tqrun would save it (and restart for a
+  resolution). Then Menu could be the Game Switcher only and the overlay menu could go.
 - Next for a standalone port: the 8 bpp → colours pass on the 2D engine too
-  (MI_GFX_SetPalette + an I8 surface, ~2 ms of CPU now; pixels must match the shots), state
-  (done: state save, menu, packaging, below) -
-  core options without RetroArch's menu, Port Manager packaging (sdcard-root zip).
+  (MI_GFX_SetPalette + an I8 surface, ~2 ms of CPU now; pixels must match the shots); mission
+  pack shortcuts; a downloadable release for Port Manager (owner's decision: the repo is private).
 
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and

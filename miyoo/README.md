@@ -25,6 +25,31 @@ What it changes, compared with the stock core:
 - Software-renderer fixes taken from standalone TyrQuake 0.71: large maps no longer drop
   surfaces or edges, liquids with non-64x64 textures, and oversized faces.
 
+## Without RetroArch (test version, branch `standalone`)
+
+The same core can also run without RetroArch, through its own small program (`tqrun`, in
+`miyoo/standalone/`), as an ordinary Onion port: **Quake (TyrQuake-Miyoo)** in the Ports list's
+FPS folder.
+
+- **About 20 % faster** than in RetroArch: an average timedemo frame takes 9.6-10.7 ms instead of
+  12.1-13.2 ms. The picture goes to the screen through the console's 2D engine, so the CPU does
+  no copying.
+- **Every frame shown in time with the screen** (59.67 Hz): frames come every 16-17 ms, where
+  RetroArch shows them in bursts of 12, 18 and 20 ms. The sound reaches the speaker exactly as
+  the game made it, with no resampling.
+- **Menu works as in Onion's RetroArch games:** a short press opens Onion's Game Switcher, and
+  picking Quake there brings you back where you were. Your place is also kept when you turn the
+  console off or it goes to sleep.
+- **Holding Menu** opens the port's menu: RESUME, RESOLUTION (640x480 or 320x240; the game
+  restarts and comes back where you were), FPS (30, 60 or UNLIMITED) and EXIT GAME.
+- Quake's own savegames work as usual; the first start copies the RetroArch version's
+  savegames and settings.
+
+Install: unzip `TyrQuake-Miyoo-Standalone-<version>.zip` onto the SD card (or let Port Manager
+install it). Quake's data goes in `Roms/PORTS/Games/TyrQuake-Miyoo/id1/`; if Quake is already
+set up for the RetroArch version (`Quake Collection (TyrQuake)/id1`), that data is used.
+Building: `miyoo/standalone/build_tqrun.sh`, then `miyoo/standalone/package.sh`.
+
 ## Installing
 
 What you need:
