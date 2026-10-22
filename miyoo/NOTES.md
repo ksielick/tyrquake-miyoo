@@ -895,6 +895,29 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   (MI_GFX_SetPalette + an I8 surface, ~2 ms of CPU now; pixels must match the shots); mission
   pack shortcuts; a downloadable release for Port Manager (owner's decision: the repo is private).
 
+## Going public and v1.0 (2026-10-22, owner asked)
+- Checked for a public repo:
+  - our 81 commits use only the noreply address, and the owner's own address is nowhere in the history;
+  - no game data or secrets are in the repo;
+  - the licence is GPL-2.0;
+  - Port Manager's repo is already public.
+- Local paths and the Miyoo's address are out of the current files (commit d9a5a18). They live in
+  `miyoo/env.local.sh` (in .gitignore), which `miyoo/tools/env.sh` reads, and the Python tools
+  read it too. A new checkout or worktree needs its own copy. Older commits still hold the LAN
+  address and the `G:\...` paths. Rewriting history would change every hash and move the beta
+  tags; that is the owner's decision, not done.
+- Left before v1.0:
+  1. The owner plays the CI core (d28e2447 or later) from fresh installs of both zips,
+     including the Game Switcher.
+  2. Port Manager install test after the repo goes public. Its catalog entry is still
+     `prerelease` and only in catalog.local.json; the Port Manager session was asked about it
+     and hasn't answered.
+  3. The owner decides whether the standalone port's "left out" sound (~38/s) and its missing
+     mission pack shortcuts block v1.0.
+  4. README and release text: drop "test version", and use the Port Manager steps once the repo is public.
+  Then: make the repo public, push tag v1.0 (Actions makes a draft), publish, and bench it
+  (see the bench after every release, in the release builds item below).
+
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +
@@ -948,6 +971,9 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
     battery 54 %, timedemo wall avg ms (fps): RetroArch demo1 12.68 (78.9), demo2 12.44
     (80.4), demo3 13.21 (75.7); tqrun demo1 10.29 (97.2), demo2 9.65 (103.7), demo3 10.62
     (94.2): the same as the README table (released core).
+  - After every release (owner, 2026-10-22): bench the released core on the Miyoo. Have the console
+    restarted by hand, then run demo1-3 at 640x480 unlimited, in RetroArch and with FRONT=tqrun.
+    Compare with the figures above (the previous release) and write them here.
 - Owner's ideas for later (2026-10-20): try the core on an R36 (Rockchip RK3326, ArkOS); a
   separate branch for a standalone port (Onion's GameSwitcher works only with RetroArch cores;
   mr-finster/miyoo64 gives its standalone games their own menu and save states instead).
