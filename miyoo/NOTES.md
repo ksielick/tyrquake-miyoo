@@ -689,9 +689,43 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   tqrun 49: there the sound write blocked (1.74 ms/frame) and frames went 11/19/20 for a while:
   the sound FIFO and the panel each pace; to do: with vsync, keep the sound from pacing
   (non-blocking writes while the FIFO has room, wait only when it is nearly full).
+- Sound with vsync (commit 1d62071): a ring + a thread of its own writing to /dev/dsp, so only
+  the panel paces the game. libpadsp's FIFO is only 2 x 1 KiB (512 frames, GETOSPACE works) and
+  audioserver pulls it into its own buffer, so the ring is nearly empty while all is well; the
+  game makes 48001-48002 samples a second against 48000 played (the panel runs a hair fast), so
+  only one correction is needed: one frame left out when the ring holds > 1600 beyond the FIFO.
+  demo1/demo3 paced: 4-5 / 3 frames over 20 ms (RetroArch 117 / 136), frames 16-17 ms. The
+  played sound (dsp_tap) equals the core's output sample for sample except 4 frames left out at
+  0.17 s (start-up). An earlier try that also repeated frames when the ring ran low repeated
+  ~1000 (the ring is empty by design): don't.
+- Standalone port (commit 8333b0e, after mr-finster's miyoo64 ports, MIT):
+  - Menu button (Onion's keymon does nothing on Menu outside RetroArch/DraStic: MODE_APPS):
+    tqrun's own menu over the dimmed last frame, 8x8 public-domain font (font8x8.h): RESUME,
+    SAVE STATE / LOAD STATE slots 1-9 (left/right), EXIT GAME (LOAD/EXIT ask ARE YOU SURE?).
+    Notice "SAVED SLOT n" over the game for 2 s.
+  - Resume state `saves/quake.state` (slots quake.state1..9): written on EXIT GAME, SIGTERM
+    (Onion's power-off), POWER press (before Onion's sleep, which may end in a power-off) and once
+    after 50 s without a button; tmp + fsync + rename; tied to the core file's contents (FNV-1a:
+    a reinstalled same build matches; another build → .rejected). Loaded after the first
+    retro_run. If the game can't be saved (demo, dead, intermission) the old resume state is
+    removed. Quitting from Quake's own menu removes it too (a deliberate quit starts afresh).
+    The core's state is the Quake savegame text padded with zeros: trailing zeros aren't written
+    (~42 KB, 30 ms).
+  - `miyoo/standalone/card/`: `launch.sh` (lower-cases id1 names; data from its own id1/ or from
+    `Quake Collection (TyrQuake)/id1`, where the owner's files are PAK0.PAK — the card's fs is
+    case-sensitive here, so the name is looked up; first start copies the RetroArch version's
+    savegames/config.cfg; libpadsp only with audioserver; performance governor; exec tqrun),
+    `Quake (TyrQuake-Miyoo).port` (Onion launch_standalone.sh, GameDataFile tqrun so it always
+    shows), `tyrquake.opt.default` (640x480, 59.67), README.txt. `package.sh` → `build/release/
+    TyrQuake-Miyoo-Standalone-<tag>.zip` (sdcard-root: Roms/PORTS/Games/TyrQuake-Miyoo +
+    Shortcuts/FPS). Port Manager entry `tyrquake-miyoo` in portmanager-miyoo's catalog.local.json
+    (needs a release Port Manager can download: the repo is private).
+  - Checked on the device: shortcut start → menu → EXIT GAME (screens fine); bench STATE=save
+    (LOAD=s0, SIGTERM) then STATE=load: the same picture after the resume.
+  - Installed on the card for the owner (2026-10-22): Games/TyrQuake-Miyoo, Shortcuts/FPS.
 - Next for a standalone port: the 8 bpp → colours pass on the 2D engine too
   (MI_GFX_SetPalette + an I8 surface, ~2 ms of CPU now; pixels must match the shots), state
-  save on Menu/SIGTERM + load on start (Onion's GameSwitcher kills standalone ports), the
+  (done: state save, menu, packaging, below) -
   core options without RetroArch's menu, Port Manager packaging (sdcard-root zip).
 
 ## Next
