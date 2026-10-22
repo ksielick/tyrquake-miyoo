@@ -939,6 +939,13 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
   - The committed profile is the one behind core 7c643356, collected before `-dumpdir`: its
     static functions don't match. Before the next release: pgo.sh on the device (new profile),
     commit it, then shots + bench of the CI core.
+  - Done the same day (owner asked): new profile (commit 58865b1, pgo.sh now strips the
+    `miyoo#pgo#` prefix of the fetched names). Local build = Actions run 39820833517: core
+    d28e2447 (726 116 bytes, as 7c643356), tqrun fc444b7a. Shots: 59/59 identical to 7c643356
+    shot the same hour (sets rel_b2, ci_pgo). Bench after a fresh restart, 640x480 unpaced,
+    battery 54 %, timedemo wall avg ms (fps): RetroArch demo1 12.68 (78.9), demo2 12.44
+    (80.4), demo3 13.21 (75.7); tqrun demo1 10.29 (97.2), demo2 9.65 (103.7), demo3 10.62
+    (94.2): the same as the README table (released core).
 - Owner's ideas for later (2026-10-20): try the core on an R36 (Rockchip RK3326, ArkOS); a
   separate branch for a standalone port (Onion's GameSwitcher works only with RetroArch cores;
   mr-finster/miyoo64 gives its standalone games their own menu and save states instead).
