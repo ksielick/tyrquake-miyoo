@@ -55,6 +55,11 @@ the level. Worth reporting upstream.
 - Quake: Ports shortcut → `Emu/PORTS/launch_retroarch.sh`, data `Roms/PORTS/Games/Quake Collection
   (TyrQuake)/{id1,music}`; core options `Saves/CurrentProfile/config/TyrQuake/TyrQuake.opt`; Quake
   config `Saves/CurrentProfile/saves/TyrQuake/id1/config.cfg` (viewsize 110).
+- Firmware: official Onion `v4.4.0-beta-20260120` with the stock MainUI (not OnionPlus/RedOnion,
+  checked 2026-10-22). Wi-Fi power save is on (stock MainUI restarts Wi-Fi; `iw dev wlan0 get
+  power_save`). It stays on during tests too (owner's decision, 2026-10-22): every measurement so
+  far was made with it on, and it only adds SSH/SMB latency (~40 ms ping vs 3.5 ms off, RedOnion
+  beta 10 notes), not to the on-device timings.
 
 ## How the timedemo benchmark works
 - In the libretro core `realtime` advances a fixed 1/framerate per retro_run, so Quake's own
