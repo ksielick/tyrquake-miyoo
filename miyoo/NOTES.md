@@ -31,9 +31,9 @@ the level. Worth reporting upstream.
 - `miyoo/tools/package_release.sh` — release zip (core, .info, shortcut) in `<workspace>/build/release/`.
 - `miyoo/card/` — files as installed on the SD card (`.info`, `1996 Quake.port` shortcut).
 - `miyoo/README.md` — user-facing README (install, Game Switcher, settings).
-- GitHub: private https://github.com/ksielick/tyrquake-miyoo, remote `miyoo`. On GitHub the branch
-  is still `miyoo` (local `retroarch` pushed there up to 97c6618 on 2026-10-20:
-  `git push miyoo refs/heads/retroarch:refs/heads/miyoo`) until the owner has it renamed.
+- GitHub: private https://github.com/ksielick/tyrquake-miyoo, remote `miyoo`. GitHub's `miyoo` branch
+  was renamed `retroarch` (default branch) on 2026-10-22 (owner asked; GitHub redirects the old
+  links); local `retroarch` tracks `miyoo/retroarch`: `git push miyoo retroarch`.
 - Releases: v1.0-beta1 (pre-release, 2026-10-20, owner asked): tag on 97c6618, asset
   TyrQuake-Miyoo-v1.0-beta1.zip from package_release.sh with core 7a446a25 (local PGO+LTO build,
   not yet the planned Actions build). `gh release create <tag> --prerelease --verify-tag`; tags
