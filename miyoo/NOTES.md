@@ -659,6 +659,41 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     remove it.
   - Kept sinc (Onion's quality setting 2).
 
+## Without RetroArch: tqrun (branch standalone, 2026-10-22, owner asked)
+- `miyoo/standalone/tqrun.c`: a minimal libretro frontend that runs the same core .so. It answers
+  the core's environment calls (options from a RetroArch .opt file, defaults from the core's
+  SET_VARIABLES, perf/log interfaces, lent frame buffers), reads the buttons from evdev
+  (Menu quits) and writes the sound to /dev/dsp through libpadsp (as RetroArch's OSS driver).
+  Frames: the core draws into two MMA buffers lent in turn; a present thread flushes the cache
+  and has the **SoC's 2D engine (MI_GFX_BitBlit, mirrored both ways = turned 180 degrees,
+  RGB565 -> ARGB8888)** put the frame into the hidden fb0 page, then FBIOPAN_DISPLAY. The
+  vendor libs are dlopen'ed (types copied from the SDK's mi_gfx_datatype.h layouts); TQ_GFX=0
+  or missing libs → CPU conversion (that took ~6 ms a frame on the present thread and made
+  the game slower than in RetroArch: avg 13.87 ms demo1). Idea from cacuracaptors'
+  OpenLara-miyoomini v1.0.9; Onion's RetroArch shows its frames through MI_GFX too.
+- Build: `miyoo/standalone/build_tqrun.sh` (dynamic, glibc ≤ 2.28: own `start.S` because the
+  toolchain's crt1.o needs __libc_start_main@GLIBC_2.34; dl*/pthread_* pinned to GLIBC_2.4 and
+  libdl.so.2 / libpthread.so.0 named explicitly; no _GNU_SOURCE, else __isoc23_strtol).
+- Bench: `FRONT=tqrun miyoo/tools/bench.sh <core> 640x480 demoN` (same content, options, saves;
+  VSYNC/SYNC/LAT/MAXF → -V/-A/-l/-n). Gotcha found: environment cases carry
+  RETRO_ENVIRONMENT_EXPERIMENTAL (GET_TARGET_SAMPLE_RATE): switch on the raw cmd, else the
+  core falls back to 44100 Hz.
+- A/B 640x480, core 7a446a25, two rounds alternated, audio_sync/vsync off (avg ms / main
+  thread CPU ms): demo1 RetroArch 12.65-12.79 / 11.95-12.05 → tqrun 10.23-10.26 / 10.12-10.13;
+  demo2 12.09-12.15 / 11.30-11.37 → 9.57-9.58 / 9.47-9.53; demo3 13.14-13.15 / 12.46-12.56 →
+  10.62-10.72 / 10.51-10.54. **~20 % faster**, ~1.9 ms a frame of the main thread (RetroArch's
+  video_cb copy, resampler, loop). The blit takes ~1.1 ms on the present thread (engine time).
+- Paced like play (RetroArch: audio_sync, sinc, 59.67 = the owner's override; tqrun: -V 1 -A 1):
+  demo3 RetroArch 136 frames over 20 ms (frames 300-359: 13-21 ms, bursts) → tqrun **5**, every
+  frame 16-17 ms (steady 59.671 fps, sound 48001/s, nothing dropped). demo1 RetroArch 117 →
+  tqrun 49: there the sound write blocked (1.74 ms/frame) and frames went 11/19/20 for a while:
+  the sound FIFO and the panel each pace; to do: with vsync, keep the sound from pacing
+  (non-blocking writes while the FIFO has room, wait only when it is nearly full).
+- Next for a standalone port: the 8 bpp → colours pass on the 2D engine too
+  (MI_GFX_SetPalette + an I8 surface, ~2 ms of CPU now; pixels must match the shots), state
+  save on Menu/SIGTERM + load on start (Onion's GameSwitcher kills standalone ports), the
+  core options without RetroArch's menu, Port Manager packaging (sdcard-root zip).
+
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +

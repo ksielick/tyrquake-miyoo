@@ -11,6 +11,8 @@
 # runtime.sh runs the command, then brings MainUI back. Started next to a running (or
 # SIGSTOPped) MainUI, Onion's RetroArch hangs in VT_WAITACTIVE on tty3. The command doesn't
 # mention /mnt/SDCARD/Roms, so runtime.sh treats it as an app and leaves SSH/SMB running.
+# FRONT=tqrun: the same run without RetroArch, through miyoo/standalone/tqrun (tqrun from the
+# bench folder; same content, core options, saves; VSYNC/SYNC/LAT/MAXF map to its -V/-A/-l/-n).
 CORE=$1
 RES=${2:-320x240}
 DEMO=${3:-demo1}
@@ -88,6 +90,9 @@ fi
 # DSPTAP=1: what RetroArch writes to /dev/dsp (after its resampler) to $T/dsp.raw (dsp_tap.so
 # from the bench folder, preloaded before libpadsp.so)
 [ "$DSPTAP" = 1 ] && cp "$(dirname "$0")/dsp_tap.so" $T/
+if [ "$FRONT" = tqrun ]; then
+	cp "$(dirname "$0")/tqrun" $T/ && chmod +x $T/tqrun || { echo "no tqrun in the bench folder"; exit 1; }
+fi
 [ -n "$PERFLOG" ] && echo "tyrquake_perf_log = \"enabled\"" >> $T/core.opt
 echo "core options: $(grep -E "framerate|resolution" $T/core.opt | tr '\n' ' ')"
 cp $RA/.retroarch/retroarch.cfg $T/retroarch.cfg
@@ -129,9 +134,11 @@ touch $T/started
 echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 cd $RA
 T0=\$(cut -d' ' -f1 /proc/uptime)
-${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }${AUDIODUMP:+TQ_AUDIO_DUMP=$T/audio.raw }${DSPTAP:+DSP_TAP=$T/dsp.raw }HOME=$RA LD_PRELOAD="${DSPTAP:+$T/dsp_tap.so }/mnt/SDCARD/miyoo/lib/libpadsp.so" ./retroarch -v -c $T/retroarch.cfg \\
-	--appendconfig $T/override.cfg ${MAXF:+--max-frames=$MAXF} -L $T/tyrquake_miyoo_libretro.so \\
-	"$CONTENT" > $T/log.txt 2>&1 &
+$(if [ "$FRONT" = tqrun ]; then
+	echo "${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }${AUDIODUMP:+TQ_AUDIO_DUMP=$T/audio.raw }${DSPTAP:+DSP_TAP=$T/dsp.raw }LD_PRELOAD=\"${DSPTAP:+$T/dsp_tap.so }/mnt/SDCARD/miyoo/lib/libpadsp.so\" $T/tqrun -L $T/tyrquake_miyoo_libretro.so -o $T/core.opt -s $T/saves -V ${VSYNC:-0} -A ${SYNC:-0} -l ${LAT:-64} ${MAXF:+-n $MAXF} \"$CONTENT\" > $T/log.txt 2>&1 &"
+else
+	echo "${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }${AUDIODUMP:+TQ_AUDIO_DUMP=$T/audio.raw }${DSPTAP:+DSP_TAP=$T/dsp.raw }HOME=$RA LD_PRELOAD=\"${DSPTAP:+$T/dsp_tap.so }/mnt/SDCARD/miyoo/lib/libpadsp.so\" ./retroarch -v -c $T/retroarch.cfg --appendconfig $T/override.cfg ${MAXF:+--max-frames=$MAXF} -L $T/tyrquake_miyoo_libretro.so \"$CONTENT\" > $T/log.txt 2>&1 &"
+fi)
 P=\$!
 ( sleep $WATCHDOG; kill -9 \$P ) 2>/dev/null &
 W=\$!
@@ -188,7 +195,7 @@ cat $T/result.txt 2>/dev/null || {
 		"retroarch=$(pidof retroarch) cmd_to_run=$(ls /tmp/cmd_to_run.sh /mnt/SDCARD/.tmp_update/cmd_to_run.sh 2>/dev/null)"
 	tail -5 $T/log.txt 2>/dev/null
 }
-grep -E "PERF|SW:|music|timedemo|Loading|load|couldn|Couldn|ERROR|frames .* seconds|Sys_Error|ERROR|Segmentation|hunk|exec config|[Ss]tate|[Ss]erializ|Audio:|Music|cpu|core options" $T/log.txt
+grep -E "tqrun|PERF|SW:|music|timedemo|Loading|load|couldn|Couldn|ERROR|frames .* seconds|Sys_Error|ERROR|Segmentation|hunk|exec config|[Ss]tate|[Ss]erializ|Audio:|Music|cpu|core options" $T/log.txt
 [ -n "$STATE" ] && { echo "states: $(ls -l $TS | tail -n +2)"; cat $T/udp.txt; }
 echo "MainUI back: $(pidof MainUI >/dev/null && echo yes || echo no)"
 echo "battery $(/customer/app/axp_test)"
