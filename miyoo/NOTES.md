@@ -38,6 +38,13 @@ the level. Worth reporting upstream.
   TyrQuake-Miyoo-v1.0-beta1.zip from package_release.sh with core 7a446a25 (local PGO+LTO build,
   not yet the planned Actions build). `gh release create <tag> --prerelease --verify-tag`; tags
   need `-c user.name=ksielick -c user.email=...` (no global git identity).
+  v1.0-beta2 (pre-release, 2026-10-22, owner asked): `standalone` merged into `retroarch` first
+  (the core's Video Options / Max FPS / FPS counter were only there), both branches pushed. One
+  release, two assets with the same core 7c643356 (PGO+LTO, shots 59/59): TyrQuake-Miyoo-v1.0-beta2.zip
+  (package_release.sh; bench in RetroArch: demo1 640x480 avg 12.97 ms) and
+  TyrQuake-Miyoo-Standalone-v1.0-beta2.zip (standalone/package.sh, tqrun fc444b7a). Port Manager's
+  update check reads only the latest release, and only the asset matching its catalog regex
+  (`^TyrQuake-Miyoo-Standalone-.*\.zip$`), so every release must carry the standalone zip.
 - Tooling: `py -3` for the Python tools (not `-I`: numpy/PIL are in the user site-packages);
   `mssh` returns its output filter's exit code (1 when the remote prints nothing) → `|| true` in
   scripts; Git Bash needs `MSYS2_ARG_CONV_EXCL` to pass device paths like `/tmp/...` unchanged.
