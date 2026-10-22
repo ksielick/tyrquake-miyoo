@@ -860,6 +860,21 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     cleared), so the two bugs cancel out. RedOnion (Amiga500/Onion, beta 10) keeps the toggles
     deliberately, starts services after a running game and leaves Wi-Fi power save on; the owner
     waits for its stable release instead of patching Onion.
+  - Power use on battery and the battery-life estimate (2026-10-22, owner asked):
+    - The owner's USB meter, menu, full battery:
+      - 0.36 A with the screen and Wi-Fi on;
+      - 0.23 A with Wi-Fi off;
+      - 0.15 A with the screen dimmed;
+      - 0.14 A in Onion's sleep.
+    - Then on battery, power_log.sh in the menu: 415 mA (~1.70 W) with Wi-Fi on, 346 mA (~1.42 W) with Wi-Fi off. The steadiness of these readings suggests the AXP discharge reading is fine at idle. The ~500 mA flat readings above came from games, so keep both caveats.
+    - Nothing was logged while the console slept: Onion stops processes with SIGSTOP.
+    - On the charger with a full battery the AXP reads 0 mA: the console runs straight from USB.
+    - Estimate for 640x480 @ 59.67 with Wi-Fi off (battery ~11 Wh): ~6 h. Three figures support it:
+      - ~15 %/h in the 12-minute run above;
+      - the 1.42 W menu reading plus ~0.3 W for the game;
+      - the meter's 2.2 → 2.6 W from menu to full load.
+    - Brightness (~0.4 W) and Wi-Fi (~0.3 W) matter more than the clock.
+    - To confirm: a 30-60 min run from 100 % with Wi-Fi off and the logger on.
   - Sound: "left out" grew to ~38 frames a second in these runs (841 in 22 s, 5369 in 100 s;
     earlier runs left out only a few): to look into.
 - Next for a standalone port: the 8 bpp → colours pass on the 2D engine too
