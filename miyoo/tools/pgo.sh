@@ -35,12 +35,16 @@ rm -rf "$WS/build/pgo_data"
 mkdir -p "$WS/build/pgo_data"
 tar xf "$SHARE/.pgo.tar" -C "$WS/build/pgo_data"
 rm -f "$SHARE/.pgo.tar"
-G=$(find "$WS/build/pgo_data" -name common_d_scan.gcda)
+# named after the relative -dumpdir: <...>/miyoo#pgo#common_d_scan.gcda
+G=$(find "$WS/build/pgo_data" -name '*common_d_scan.gcda')
 [ -n "$G" ] || { echo "no .gcda files in the profile" >&2; exit 1; }
 # -fprofile-use reads miyoo/pgo/<object>.gcda (build_core.sh's -dumpdir); the release build
 # (miyoo/build/build_release.sh, GitHub Actions) uses the same files: commit them
 rm -f "$REPO"/miyoo/pgo/*.gcda
-cp "$(dirname "$G")"/*.gcda "$REPO/miyoo/pgo/"
+for g in "$(dirname "$G")"/*.gcda; do
+	n=$(basename "$g")
+	cp "$g" "$REPO/miyoo/pgo/${n##*#}"
+done
 echo "profile: $(ls "$REPO"/miyoo/pgo/*.gcda | wc -l) files in miyoo/pgo (commit them)"
 
 # the changed flags rebuild everything, now using the profile (LTO unless LTO=0)
