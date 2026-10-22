@@ -8,6 +8,8 @@
 # LTO=1: link-time optimisation (the extra CFLAGS are passed to the link too); NOLTO: sources
 # compiled without it, default common/r_misc.c (inlined elsewhere its float maths, fused
 # differently, moved a texel: shots must stay identical, see NOTES).
+# TC: the toolchain's bin directory (CI: the Linux-hosted one). GIT_VERSION: the version string
+# (default: the short hash of HEAD).
 set -e
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 WS=$(cd "$REPO/../.." && pwd)
@@ -56,7 +58,7 @@ CFLAGS="-O2 -DNDEBUG -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -fP
 -Wno-unused -Wno-maybe-uninitialized
 -DTYRQUAKE_MIYOO_MINI -DHAVE_STRINGS_H -DHAVE_STDINT_H -DHAVE_INTTYPES_H -D__LIBRETRO__ -DNQ_HACK -DQBASEDIR=. -DTYR_VERSION=0.62
 -DINLINE=inline -DUSE_CODEC_WAVE -DUSE_CODEC_FLAC -DUSE_CODEC_VORBIS -DVORBIS_USE_TREMOR
--DGIT_VERSION=\\\"$(cd "$REPO" && git rev-parse --short HEAD)\\\"
+-DGIT_VERSION=\\\"${GIT_VERSION:-$(cd "$REPO" && git rev-parse --short HEAD)}\\\"
 -include miyoo/build/glibc_compat.h -I. -Ilibretro-common/include -Iinclude -Ideps/libFLAC/include -Ideps -Ideps/libogg/include $EXTRA"
 
 mkdir -p "$OUT/obj"
@@ -65,7 +67,13 @@ echo $CFLAGS > "$OUT/cflags.new"
 cmp -s "$OUT/cflags.new" "$OUT/cflags.rsp" || { mv "$OUT/cflags.new" "$OUT/cflags.rsp"; FORCE=1; }
 export CC RSP="$OUT/cflags.rsp"
 cd "$REPO"
-# one compile per line for xargs -P; per-file extras as in the upstream Makefile
+mkdir -p miyoo/pgo
+# __DATE__/__TIME__ (host.c's version line) from the last commit, not the clock
+export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
+# one compile per line for xargs -P; per-file extras as in the upstream Makefile.
+# -dumpdir miyoo/pgo/ (relative): GCC keys a static function's profile on this name, not on the
+# object's path, so a profile (miyoo/pgo/<object>.gcda, read from there by -fprofile-use) fits
+# any build directory and checkout (CI). -frandom-seed: the same sources give the same binary.
 for s in $SRCS; do
 	o="$OUT/obj/$(echo "$s" | tr '/' '_' | sed 's/\.c$/.o/')"
 	x=""
@@ -79,7 +87,7 @@ for s in $SRCS; do
 	if [ ! -f "$o" ] || [ "$s" -nt "$o" ] || [ -n "$FORCE" ]; then
 		echo "$s $o${x:+ $x}"
 	fi
-done | xargs -r -P "$JOBS" -L 1 sh -c 'echo "  CC $0"; "$CC" @"$RSP" $2 $3 $4 $5 $6 -c "$0" -o "$1"'
+done | xargs -r -P "$JOBS" -L 1 sh -c 'echo "  CC $0"; "$CC" @"$RSP" $2 $3 $4 $5 $6 -dumpdir miyoo/pgo/ -frandom-seed="$0" -c "$0" -o "$1"'
 
 "$CC" -shared -Wl,--version-script=common/libretro-link.T -Wl,--no-undefined -Wl,--wrap=stat -static-libgcc $LDEXTRA \
 	-o "$OUT/tyrquake_libretro.so" "$OUT"/obj/*.o -lm

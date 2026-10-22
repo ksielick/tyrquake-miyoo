@@ -3,7 +3,7 @@
 #   miyoo/tools/pgo.sh [demos]        (default demo1 demo2 demo3; LTO=0: PGO only)
 # 1. builds an instrumented core (-O3 -fprofile-generate) into <workspace>/build/core_pgo,
 # 2. runs the timedemos with it on the Miyoo (bench.sh PGO=1: the profile goes to /tmp/pgo),
-# 3. fetches the .gcda files next to the objects and rebuilds there with -fprofile-use.
+# 3. fetches the .gcda files into miyoo/pgo/ (commit them) and rebuilds with -fprofile-use.
 # Result: <workspace>/build/core_pgo/tyrquake_libretro.so. Runs on the device: ask the owner first.
 # The profile belongs to this source: rerun the whole script after code changes.
 set -e
@@ -37,8 +37,11 @@ tar xf "$SHARE/.pgo.tar" -C "$WS/build/pgo_data"
 rm -f "$SHARE/.pgo.tar"
 G=$(find "$WS/build/pgo_data" -name common_d_scan.gcda)
 [ -n "$G" ] || { echo "no .gcda files in the profile" >&2; exit 1; }
-cp "$(dirname "$G")"/*.gcda "$OUT/obj/"
-echo "profile: $(ls "$OUT"/obj/*.gcda | wc -l) files"
+# -fprofile-use reads miyoo/pgo/<object>.gcda (build_core.sh's -dumpdir); the release build
+# (miyoo/build/build_release.sh, GitHub Actions) uses the same files: commit them
+rm -f "$REPO"/miyoo/pgo/*.gcda
+cp "$(dirname "$G")"/*.gcda "$REPO/miyoo/pgo/"
+echo "profile: $(ls "$REPO"/miyoo/pgo/*.gcda | wc -l) files in miyoo/pgo (commit them)"
 
 # the changed flags rebuild everything, now using the profile (LTO unless LTO=0)
 [ "$LTO" = 0 ] && LTO= || LTO=1
