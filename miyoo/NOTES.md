@@ -772,7 +772,7 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   - Core (libretro.c): Video Options (vid_menudrawfn/vid_menukeyfn, set in VID_Init only when
     SET_VARIABLE is supported, so RetroArch 1.22 shows it too): qplaque + p_option + "Video
     Options", rows at y 48/56/64, values at x 220, cursor at 200 as the Options menu.
-    Resolution: left/right choose, A/ENTER applies a changed one ("Press ENTER to apply: the
+    Resolution: left/right choose, A/ENTER applies a changed one ("Press A to apply: the
     game starts again where you left it"). Max FPS 30/60/Unlimited = 29.835/59.67/200: written
     with SET_VARIABLE and taken at once (set_running_framerate → SET_SYSTEM_AV_INFO). Show FPS =
     new archived cvar scr_showfps (config.cfg). M_DrawTransPic exported from menu.c.
@@ -796,6 +796,16 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   - Game Switcher picture missing after the owner opened Tweaks: recentlist.json's first entry
     was the app (type 3, no rompath) and tqrun read only the first line. Now the first entry
     with a rompath (tqrun 2ff68497).
+  - Core 7c643356 ("Press A to apply", shots 59/59 identical to rel_today) + tqrun 2ff68497 on
+    the card.
+  - Power/temperature with Wi-Fi off (owner asked; `miyoo/tools/power_log.sh` on the device
+    every 5 s, `py -3 miyoo/tools/power_log.py`), owner playing, performance governor:
+    320x240 @ 29.835: 18.5 min, CPU 11.6 % (both cores together), 1.1-1.2 GHz, 63 → 59 °C,
+    battery 99 → 95 % (~13 %/h); 640x480 @ 59.67: 11.9 min, CPU 48.5 %, 1.2 GHz, 60 → 63 °C,
+    95 → 92 % (~15 %/h). Voltage fell ~3 mV/min in both. Percent steps are 1 %, and the first
+    run started right off the charger: the battery figures are rough. Screen + rest of the SoC
+    dominate; the governor keeps 1.1-1.2 GHz even at 12 % load (ondemand untested). Much cooler
+    than RetroArch at 640x480 (70-75 °C).
   - Sound: "left out" grew to ~38 frames a second in these runs (841 in 22 s, 5369 in 100 s;
     earlier runs left out only a few): to look into.
 - Next for a standalone port: the 8 bpp → colours pass on the 2D engine too

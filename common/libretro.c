@@ -2134,7 +2134,7 @@ static void VID_MenuDraw(void)
 
    if (vmenu_res_pick >= 0 && vmenu_res_pick != running)
    {
-      M_PrintCentred(80, "Press ENTER to apply:", true);
+      M_PrintCentred(80, "Press A to apply:", true);
       M_PrintCentred(88, "the game starts again", false);
       M_PrintCentred(96, "where you left it", false);
    }
