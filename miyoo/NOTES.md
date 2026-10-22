@@ -851,7 +851,8 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     side: now video_shutdown waits for the 2D engine, MI_SYS_Munmap + MI_SYS_MMA_Free the lent
     buffers, MI_GFX_Close, MI_SYS_Exit, and pans back to the page shown at the start. Checked:
     reboot → tqrun run → Battery Monitor fine (before the fix: black after one 300-frame run).
-    miyoo/tools/fbpan.c pans fb0 by hand (didn't help alone).
+    miyoo/tools/fbpan.c pans fb0 by hand. The MI release is what mattered: after a clean boot,
+    fb0 panned to y=480 by hand (no tqrun) left MainUI and Battery Monitor fine.
   - Onion and SSH/Samba (see the shared device memory): the services start only in runtime.sh's
     loop (boot, after a game or app exits), not when Wi-Fi is switched on in MainUI's settings:
     open and close any app (Tweaks, Port Manager) or a game afterwards. Onion's restore_state
