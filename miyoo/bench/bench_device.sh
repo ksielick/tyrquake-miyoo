@@ -135,7 +135,7 @@ echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 cd $RA
 T0=\$(cut -d' ' -f1 /proc/uptime)
 $(if [ "$FRONT" = tqrun ]; then
-	echo "${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }${AUDIODUMP:+TQ_AUDIO_DUMP=$T/audio.raw }${DSPTAP:+DSP_TAP=$T/dsp.raw }LD_PRELOAD=\"${DSPTAP:+$T/dsp_tap.so }/mnt/SDCARD/miyoo/lib/libpadsp.so\" $T/tqrun -L $T/tyrquake_miyoo_libretro.so -o $T/core.opt -s $T/saves -V ${VSYNC:-0} -A ${SYNC:-0} -l ${LAT:-64} ${MAXF:+-n $MAXF} \"$CONTENT\" > $T/log.txt 2>&1 &"
+	echo "${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }${AUDIODUMP:+TQ_AUDIO_DUMP=$T/audio.raw }${DSPTAP:+DSP_TAP=$T/dsp.raw }LD_PRELOAD=\"${DSPTAP:+$T/dsp_tap.so }/mnt/SDCARD/miyoo/lib/libpadsp.so\" $T/tqrun -L $T/tyrquake_miyoo_libretro.so -o $T/core.opt -s $T/saves -V ${VSYNC:-0} -A ${SYNC:-0} -l ${LAT:-64} ${MAXF:+-n $MAXF} ${STATE:+-S $TS/tqrun.state} \"$CONTENT\" > $T/log.txt 2>&1 &"
 else
 	echo "${PGO:+GCOV_PREFIX=/tmp/pgo GCOV_PREFIX_STRIP=0 }${AUDIODUMP:+TQ_AUDIO_DUMP=$T/audio.raw }${DSPTAP:+DSP_TAP=$T/dsp.raw }HOME=$RA LD_PRELOAD=\"${DSPTAP:+$T/dsp_tap.so }/mnt/SDCARD/miyoo/lib/libpadsp.so\" ./retroarch -v -c $T/retroarch.cfg --appendconfig $T/override.cfg ${MAXF:+--max-frames=$MAXF} -L $T/tyrquake_miyoo_libretro.so \"$CONTENT\" > $T/log.txt 2>&1 &"
 fi)
@@ -149,12 +149,19 @@ U=/mnt/SDCARD/.tmp_update/bin/sendUDP
 	y=\$(cut -d, -f2 /sys/class/graphics/fb0/pan)
 	dd if=/dev/fb0 bs=2560 skip=\$y count=480 of=$SHOTDIR/\$(printf %02d \$i).raw 2>/dev/null
 	i=\$((i + 1)); usleep 150000; done ) &
+# tqrun: the screen after SDELAY s to $T/fb_<STATE>.raw (the shown page), then SIGTERM, as
+# Onion's power-off sends (tqrun saves its resume state to $TS/tqrun.state on it)
+if [ "$FRONT" = tqrun ]; then
+	[ -n "$STATE" ] && ( sleep $SDELAY; y=\$(cut -d, -f2 /sys/class/graphics/fb0/pan)
+	dd if=/dev/fb0 bs=2560 skip=\$y count=480 of=$T/fb_$STATE.raw 2>/dev/null; kill -TERM \$P ) &
+else
 case "$STATE" in
 save) ( sleep $SDELAY; \$U -r 512 GET_STATUS; echo; \$U -r 128 "SAVE_STATE_SLOT -1"; echo
 	sleep 4; \$U QUIT ) > $T/udp.txt 2>&1 & ;;
 load) ( sleep $SDELAY; cut -d, -f2 /sys/class/graphics/fb0/pan > $T/fb.pan
 	head -c 3686400 /dev/fb0 > $T/fb.raw; \$U QUIT ) > $T/udp.txt 2>&1 & ;;
 esac
+fi
 wait \$P
 RC=\$?
 T1=\$(cut -d' ' -f1 /proc/uptime)
