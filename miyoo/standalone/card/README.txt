@@ -12,18 +12,19 @@ Ports Collection (Roms/PORTS/Games/Quake Collection (TyrQuake)/id1), that data i
 Buttons: as in the RetroArch version.
 Menu (short press): Onion's Game Switcher, as in RetroArch games. Picking Quake there puts
   you back where you were.
-Menu (held): this port's menu:
-  RESUME,
-  RESOLUTION (640x480, 320x240: the game restarts and comes back where you were),
-  FPS (30: every frame shown for two of the screen's refreshes; 60: one; UNLIMITED: the game
-  runs as fast as it can, the screen still shows up to 59.67 a second), EXIT GAME.
-  RESOLUTION and FPS are kept in tyrquake.opt.
-Leaving with the Game Switcher or EXIT GAME, turning the console off or putting it to sleep
-keeps your place: the next start puts you back there. Quitting from Quake's own menu starts
-afresh next time. Quake's own savegames work as usual.
+Settings: Quake's own menu, Options -> Video Options:
+  Resolution: 640x480 or 320x240. Choose with left/right, apply with A: the game starts again
+    and comes back where you were.
+  Max FPS: applies at once. 30: every frame shown for two of the screen's refreshes; 60: one;
+    Unlimited: the game runs as fast as it can, the screen still shows up to 59.67 a second.
+  Show FPS: the game's frames per second, top right.
+  Resolution and Max FPS are kept in tyrquake.opt, Show FPS in Quake's config.cfg.
+Leaving with the Game Switcher, turning the console off or putting it to sleep keeps your
+place: the next start puts you back there. Quitting from Quake's own menu starts afresh next
+time. Quake's own savegames work as usual.
 
 Files kept here: saves/ (savegames, Quake's config.cfg, states), tyrquake.opt (settings;
 delete it to get the defaults back), log.txt (the last run's log).
 
-Licence: GPL-2.0-or-later (TyrQuake and Quake's engine, id Software). The menu's design and
-the sleep save follow mr-finster's miyoo64 ports (MIT); the 8x8 font is public domain.
+Licence: GPL-2.0-or-later (TyrQuake and Quake's engine, id Software). The sleep save follows
+mr-finster's miyoo64 ports (MIT).

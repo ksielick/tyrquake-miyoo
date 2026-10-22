@@ -40,8 +40,13 @@ FPS folder.
 - **Menu works as in Onion's RetroArch games:** a short press opens Onion's Game Switcher, and
   picking Quake there brings you back where you were. Your place is also kept when you turn the
   console off or it goes to sleep.
-- **Holding Menu** opens the port's menu: RESUME, RESOLUTION (640x480 or 320x240; the game
-  restarts and comes back where you were), FPS (30, 60 or UNLIMITED) and EXIT GAME.
+- **Settings in Quake's own menu**, Options → Video Options:
+  - **Resolution** (640x480 or 320x240): choose with left/right, apply with A. The game then
+    starts again and comes back where you were.
+  - **Max FPS** (30, 60 or Unlimited): applies at once. 30 shows each frame for two of the
+    screen's refreshes. Unlimited runs the game as fast as it can, but the screen still shows at
+    most 59.67 frames a second.
+  - **Show FPS**: the game's frames per second, top right.
 - Quake's own savegames work as usual; the first start copies the RetroArch version's
   savegames and settings.
 

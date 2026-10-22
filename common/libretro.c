@@ -58,6 +58,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sound.h"
 #include "bgmusic.h"
 #include "keys.h"
+#include "draw.h"
+#include "menu.h"
+#include "vid.h"
 #include "cdaudio_driver.h"
 #include "input.h"
 
@@ -1026,6 +1029,32 @@ static void update_audio_samplerate(void)
    audio_samplerate = chosen;
 }
 
+/* The framerate changed while running (Video Options, or the frontend's
+ * options; branch standalone): taken at once when the frontend accepts the
+ * new timing (SET_SYSTEM_AV_INFO), else at the next start as before.  The
+ * sample rate stays: Quake's mixer and the frame's share of samples follow
+ * frame_step. */
+static void set_running_framerate(float fr)
+{
+   struct retro_system_av_info av;
+   float old = framerate;
+
+   fr = sanitise_framerate(fr);
+   if (fr == framerate)
+      return;
+   framerate = fr;
+   retro_get_system_av_info(&av);
+   if (environ_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &av))
+   {
+      frametime_usec = 1000.0f / framerate;
+      if (perf_log_path[0] && perf_log_wanted)
+         perf_timing_set_log(perf_log_path, framerate);
+      log_cb(RETRO_LOG_INFO, "Framerate: %.3f fps\n", framerate);
+   }
+   else
+      framerate = old;
+}
+
 static void update_variables(bool startup)
 {
    struct retro_variable var;
@@ -1033,32 +1062,9 @@ static void update_variables(bool startup)
    var.key = "tyrquake_framerate";
    var.value = NULL;
 
-   /* Changed while running (tqrun's menu, branch standalone): taken at once
-    * when the frontend accepts the new timing (SET_SYSTEM_AV_INFO), else at
-    * the next start as before.  The sample rate stays: Quake's mixer and the
-    * frame's share of samples follow frame_step. */
    if (!startup && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value
          && strcmp(var.value, "auto"))
-   {
-      float fr = sanitise_framerate((float)atof(var.value));
-      if (fr != framerate)
-      {
-         struct retro_system_av_info av;
-         float old = framerate;
-
-         framerate = fr;
-         retro_get_system_av_info(&av);
-         if (environ_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &av))
-         {
-            frametime_usec = 1000.0f / framerate;
-            if (perf_log_path[0] && perf_log_wanted)
-               perf_timing_set_log(perf_log_path, framerate);
-            log_cb(RETRO_LOG_INFO, "Framerate: %.3f fps\n", framerate);
-         }
-         else
-            framerate = old;
-      }
-   }
+      set_running_framerate((float)atof(var.value));
 
    if (startup)
    {
@@ -2047,9 +2053,170 @@ void VID_ShiftPalette(unsigned char *palette)
    Sbar_Changed();
 }
 
+/* ---- Video Options (Options -> Video -> Video Options), branch standalone --
+ * The frontend's resolution and framerate options in Quake's own menus, drawn
+ * as TyrQuake 0.71's video mode menu was.  Offered when the frontend can take
+ * a changed option (SET_VARIABLE).  Resolution is read at the core's start:
+ * a choice is applied with ENTER, and tqrun then starts the game again (its
+ * resume state puts the player back).  Max FPS is taken at once; "30" is half
+ * the Miyoo's 59.67 Hz panel, "Unlimited" 200 (the panel still shows 59.67).
+ * Show FPS is Quake's own scr_showfps (kept in config.cfg). */
+static const char *const vmenu_res[] = { "640x480", "320x240" };
+static const struct { const char *value, *label; } vmenu_fps[] = {
+   { "29.835", "30" }, { "59.67", "60" }, { "200", "Unlimited" },
+};
+#define VMENU_NUM_RES (int)(sizeof(vmenu_res) / sizeof(vmenu_res[0]))
+#define VMENU_NUM_FPS (int)(sizeof(vmenu_fps) / sizeof(vmenu_fps[0]))
+#define VMENU_ITEMS 3	/* Resolution, Max FPS, Show FPS */
+static int vmenu_cursor;
+static int vmenu_res_pick = -1;	/* a resolution chosen, not applied yet */
+
+void M_Menu_OptionsVideo_f(void);
+
+static int vmenu_res_running(void)
+{
+   char res[32];
+   int i;
+
+   snprintf(res, sizeof(res), "%ux%u", width, height);
+   for (i = 0; i < VMENU_NUM_RES; i++)
+      if (!strcmp(res, vmenu_res[i]))
+         return i;
+   return -1;
+}
+
+static int vmenu_fps_index(void)
+{
+   return framerate < 45.0f ? 0 : framerate < 100.0f ? 1 : 2;
+}
+
+static bool vmenu_set(const char *key, const char *value)
+{
+   struct retro_variable var;
+
+   var.key   = key;
+   var.value = value;
+   return environ_cb(RETRO_ENVIRONMENT_SET_VARIABLE, &var);
+}
+
+static void M_PrintCentred(int cy, const char *str, bool white)
+{
+   int cx = (320 - (int)strlen(str) * 8) / 2;
+
+   if (white)
+      M_PrintWhite(cx, cy, str);
+   else
+      M_Print(cx, cy, str);
+}
+
+static void VID_MenuDraw(void)
+{
+   char res[32];
+   const qpic_t *p;
+   int running = vmenu_res_running();
+   int pick = vmenu_res_pick >= 0 ? vmenu_res_pick : running;
+
+   M_DrawTransPic(16, 4, Draw_CachePic("gfx/qplaque.lmp"));
+   p = Draw_CachePic("gfx/p_option.lmp");
+   M_DrawPic((320 - p->width) / 2, 4, p);
+   M_PrintCentred(32, "Video Options", true);
+
+   if (pick >= 0)
+      snprintf(res, sizeof(res), "%s", vmenu_res[pick]);
+   else
+      snprintf(res, sizeof(res), "%ux%u", width, height);
+   M_Print(16, 48, "            Resolution");
+   M_Print(220, 48, res);
+   M_Print(16, 56, "               Max FPS");
+   M_Print(220, 56, vmenu_fps[vmenu_fps_index()].label);
+   M_Print(16, 64, "              Show FPS");
+   M_Print(220, 64, scr_showfps.value ? "on" : "off");
+
+   if (vmenu_res_pick >= 0 && vmenu_res_pick != running)
+   {
+      M_PrintCentred(80, "Press ENTER to apply:", true);
+      M_PrintCentred(88, "the game starts again", false);
+      M_PrintCentred(96, "where you left it", false);
+   }
+
+   M_DrawCharacter(200, 48 + vmenu_cursor * 8, 12 + ((int)(realtime * 4) & 1));
+}
+
+static void VID_MenuKey(int key)
+{
+   int running = vmenu_res_running();
+   int dir = 0;
+
+   switch (key)
+   {
+   case K_JOY_B:
+   case K_ESCAPE:
+      vmenu_res_pick = -1;
+      M_Menu_OptionsVideo_f();
+      return;
+
+   case K_JOY_UP:
+   case K_UPARROW:
+      S_LocalSound("misc/menu1.wav");
+      vmenu_cursor = (vmenu_cursor + VMENU_ITEMS - 1) % VMENU_ITEMS;
+      return;
+
+   case K_JOY_DOWN:
+   case K_DOWNARROW:
+      S_LocalSound("misc/menu1.wav");
+      vmenu_cursor = (vmenu_cursor + 1) % VMENU_ITEMS;
+      return;
+
+   case K_JOY_LEFT:
+   case K_LEFTARROW:
+      dir = -1;
+      break;
+
+   case K_JOY_RIGHT:
+   case K_RIGHTARROW:
+      dir = 1;
+      break;
+
+   case K_JOY_A:
+   case K_ENTER:
+      if (vmenu_cursor == 0 && vmenu_res_pick >= 0 && vmenu_res_pick != running)
+      {
+         S_LocalSound("misc/menu2.wav");
+         vmenu_set("tyrquake_resolution", vmenu_res[vmenu_res_pick]);
+         return;
+      }
+      dir = 1;
+      break;
+
+   default:
+      return;
+   }
+
+   S_LocalSound("misc/menu3.wav");
+   if (vmenu_cursor == 0)
+   {
+      int pick = vmenu_res_pick >= 0 ? vmenu_res_pick : running < 0 ? 0 : running;
+      vmenu_res_pick = (pick + dir + VMENU_NUM_RES) % VMENU_NUM_RES;
+   }
+   else if (vmenu_cursor == 2)
+      Cvar_SetValue("scr_showfps", scr_showfps.value ? 0 : 1);
+   else
+   {
+      int f = (vmenu_fps_index() + dir + VMENU_NUM_FPS) % VMENU_NUM_FPS;
+      vmenu_set("tyrquake_framerate", vmenu_fps[f].value);
+      set_running_framerate((float)atof(vmenu_fps[f].value));
+   }
+}
+
 void VID_Init(unsigned char *palette)
 {
    size_t fb_pixels;
+
+   if (environ_cb(RETRO_ENVIRONMENT_SET_VARIABLE, NULL))
+   {
+      vid_menudrawfn = VID_MenuDraw;
+      vid_menukeyfn  = VID_MenuKey;
+   }
 
    /* Clamp to the renderer's compile-time scratch limits.  The
     * fixed-pipeline rasterizer indexes per-row state from

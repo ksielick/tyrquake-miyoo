@@ -765,6 +765,39 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
   libretro build), drawn like the 1996 DOS mode list; the core would hand the choice to the
   frontend with RETRO_ENVIRONMENT_SET_VARIABLE (70) and tqrun would save it (and restart for a
   resolution). Then Menu could be the Game Switcher only and the overlay menu could go.
+- Done that way (2026-10-22, owner asked; also asked for an FPS counter there):
+  - tqrun: overlay menu, hold logic and font8x8.h removed; Menu (on its release) = Game
+    Switcher. SET_VARIABLE: NULL → true (supported); known key → written to tyrquake.opt;
+    tyrquake_resolution ≠ the running one → after this retro_run quit = 2 (resume state, execv).
+  - Core (libretro.c): Video Options (vid_menudrawfn/vid_menukeyfn, set in VID_Init only when
+    SET_VARIABLE is supported, so RetroArch 1.22 shows it too): qplaque + p_option + "Video
+    Options", rows at y 48/56/64, values at x 220, cursor at 200 as the Options menu.
+    Resolution: left/right choose, A/ENTER applies a changed one ("Press ENTER to apply: the
+    game starts again where you left it"). Max FPS 30/60/Unlimited = 29.835/59.67/200: written
+    with SET_VARIABLE and taken at once (set_running_framerate → SET_SYSTEM_AV_INFO). Show FPS =
+    new archived cvar scr_showfps (config.cfg). M_DrawTransPic exported from menu.c.
+  - FPS counter (screen.c SCR_DrawFPS): screen updates per second of the frontend's clock
+    (perf interface), refreshed every 0.5 s, "NN fps" top right of the view; hidden in menus.
+    With Unlimited it counts the game's frames, not the ones the panel shows (≤ 59.67).
+    Off by default; shots need it off (the bench copies the owner's config.cfg).
+  - Resolution in RetroArch: written to the core options, taken at the next start.
+  - PGO core 4bca0392 (tqrun d42a8717) installed on the card 2026-10-22 (old files and saves in
+    workspace backup/20261022-vmenu). Shots: all 59 identical to the release core 7a446a25
+    taken the same day (set rel_today). Both differ from td/ref by up to 9 per channel over the
+    whole picture: the shots copy the owner's config.cfg, and the owner set gamma 0.8 /
+    brightness 0.05 in the morning; td/ref was made with an older config (gamma 1 + brightness
+    0 gives 33, brightness 0 alone 20: unknown). Until shots.sh forces fixed picture cvars,
+    compare against the release core shot on the same day.
+  - Owner checked by hand: START → Options → Video → Video Options works; Unlimited shows over
+    100 fps in the 640x480 attract demos (the game's frames; the panel shows ≤ 59.67).
+  - Scripted test (sendkeys through the shortcut) didn't open Quake's menu with START during the
+    attract demo, though Menu (read by tqrun) worked and the events reach event0 (seen with
+    cat): cause not found; check by hand.
+  - Game Switcher picture missing after the owner opened Tweaks: recentlist.json's first entry
+    was the app (type 3, no rompath) and tqrun read only the first line. Now the first entry
+    with a rompath (tqrun 2ff68497).
+  - Sound: "left out" grew to ~38 frames a second in these runs (841 in 22 s, 5369 in 100 s;
+    earlier runs left out only a few): to look into.
 - Next for a standalone port: the 8 bpp → colours pass on the 2D engine too
   (MI_GFX_SetPalette + an I8 surface, ~2 ms of CPU now; pixels must match the shots); mission
   pack shortcuts; a downloadable release for Port Manager (owner's decision: the repo is private).

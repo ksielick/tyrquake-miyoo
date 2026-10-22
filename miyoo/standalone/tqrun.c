@@ -15,7 +15,7 @@
  *     -A 0|1        wait for the sound (audio sync, default 1)
  *     -l ms         sound latency for the OSS fragment size (default 64, as RetroArch)
  *
- * Menu quits. Times per frame (frontend parts) are printed at the end.
+ * Menu: Onion's Game Switcher. Times per frame (frontend parts) are printed at the end.
  */
 /* no _GNU_SOURCE: with it glibc 2.38's headers send strtol & co. to __isoc23_* */
 #include <dlfcn.h>
@@ -121,10 +121,13 @@ static const char *opt_get(const char *key, const char *fallback)
    return o ? o->value : fallback;
 }
 
-static const char *opt_path;	/* the options file: the menu's choices are written back to it */
+static const char *opt_path;	/* the options file: Video Options' choices are written back to it */
 static int opts_changed;	/* the core reads its options again (GET_VARIABLE_UPDATE) */
+/* the resolution the core started with: Video Options' new one (SET_VARIABLE) restarts tqrun */
+static char running_res[128];
+static int restart_request;
 
-/* the options the file had plus the menu's, back into the file (tmp + rename) */
+/* the options the file had plus Video Options', back into the file (tmp + rename) */
 static void opts_save(void)
 {
    char tmp[640];
@@ -207,7 +210,7 @@ static int vsync = 1;
 static int play_mode;	/* started with -V 1: the panel's pacing follows the core's framerate */
 static int present_hold;	/* refreshes each frame stays on beyond the first (1: 30 fps) */
 
-/* the menu's FPS: 30 = 29.835 (two refreshes a frame), 60 = 59.67 (one), UNLIMITED = the game
+/* Video Options' Max FPS: 30 = 29.835 (two refreshes a frame), 60 = 59.67 (one), UNLIMITED = the game
  * at its own speed (fps 120 with real-time steps), shown at the panel's pace without waiting */
 static void present_follow_fps(double fps)
 {
@@ -784,7 +787,7 @@ static size_t RETRO_CALLCONV audio_batch(const int16_t *data, size_t frames)
    st_audio_frames += frames;
    if (dsp_fd < 0)
       return frames;
-   if (play_mode)	/* the ring whatever the menu's FPS: the panel or the game paces, never the sound */
+   if (play_mode)	/* the ring whatever the FPS: the panel or the game paces, never the sound */
    {
       ring_start();
       ring_push(data, frames);
@@ -842,32 +845,20 @@ static int key_to_pad(int code)
    return -1;
 }
 
-static volatile int menu_request, sleep_save_request, switcher_request;
+static volatile int sleep_save_request, switcher_request;
 static double last_input_usec;	/* the last button change: the idle save */
-/* Menu as in Onion's RetroArch games: a short press opens the Game Switcher, holding it
- * (MENU_HOLD_USEC) this port's menu */
-#define MENU_HOLD_USEC 600000.0
-static double menu_down_usec;	/* Menu went down then (0: not down) */
-static int menu_hold_fired;
 
-/* every key change goes here, read by the game (input_poll) or by the menu (menu_keys) */
+/* every key change goes here, read by the game (input_poll) */
 static void key_event(int code, int down)
 {
    int id;
    last_input_usec = now_usec();
    if (code == KEY_ESC)
    {
-      if (down)
-      {
-         menu_down_usec = last_input_usec;
-         menu_hold_fired = 0;
-      }
-      else if (menu_down_usec)
-      {
-         if (!menu_hold_fired)
-            switcher_request = 1;
-         menu_down_usec = 0;
-      }
+      /* Menu as in Onion's RetroArch games: the Game Switcher (on the release, so the press
+       * isn't left for it) */
+      if (!down)
+         switcher_request = 1;
       return;
    }
    if (code == KEY_POWER)
@@ -1021,8 +1012,22 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void *data)
       *(bool *)data = opts_changed != 0;
       opts_changed = 0;
       return true;
+   case RETRO_ENVIRONMENT_SET_VARIABLE:
+   {
+      /* Quake's Video Options: kept in the options file; a new resolution restarts the game */
+      const struct retro_variable *v = data;
+      if (!v)
+         return true;
+      if (!v->key || !v->value || !*v->value || !opt_find(v->key))
+         return false;
+      opt_set(v->key, v->value, 1);
+      opts_save();
+      if (!strcmp(v->key, "tyrquake_resolution"))
+         restart_request = strcmp(v->value, running_res) != 0;
+      return true;
+   }
    case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
-      /* the framerate changed while running (the menu's FPS) */
+      /* the framerate changed while running (Video Options' Max FPS) */
       present_follow_fps(((const struct retro_system_av_info *)data)->timing.fps);
       return true;
    case RETRO_ENVIRONMENT_SET_MESSAGE:
@@ -1172,278 +1177,6 @@ static int state_load_from(const char *path)
    return ok;
 }
 
-/* ---- the menu (Menu held) -------------------------------------------------------------------
- * Laid out as mr-finster's miyoo64 menus (MIT): over a dimmed picture of the game, RESUME,
- * RESOLUTION, FPS (left/right), EXIT GAME. Up/down choose, A or START act (EXIT asks "ARE YOU
- * SURE?" first), B or Menu go back. Drawn with an 8x8 font into a lent frame buffer and shown
- * like a game frame. Saving is Quake's own (its menu) plus the resume state Onion's Game
- * Switcher brings back (a short press of Menu). */
-#include "font8x8.h"
-
-#define RGB565(r, g, b) (uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3))
-static uint16_t *menu_bg;	/* the game's last frame, dimmed, 640x480 */
-
-static void draw_text(uint16_t *dst, int pitch_px, int w, int h, int x, int y, int k, const char *s, uint16_t c)
-{
-   for (; *s; s++, x += 8 * k)
-   {
-      const uint8_t *g;
-      int gx, gy;
-      unsigned ch = (unsigned char)*s;
-      if (ch < 32 || ch > 126)
-         ch = '?';
-      g = font8x8[ch - 32];
-      for (gy = 0; gy < 8 * k; gy++)
-      {
-         int py = y + gy;
-         uint8_t bits = g[gy / k];
-         if (py < 0 || py >= h)
-            continue;
-         for (gx = 0; gx < 8 * k; gx++)
-         {
-            int px = x + gx;
-            if (px >= 0 && px < w && (bits >> (gx / k)) & 1)
-               dst[py * pitch_px + px] = c;
-         }
-      }
-   }
-}
-
-/* centred, with a shadow one pixel per scale step down-right */
-static void draw_text_c(uint16_t *dst, int y, int k, const char *s, uint16_t c)
-{
-   int x = (SCREEN_W - (int)strlen(s) * 8 * k) / 2;
-   draw_text(dst, SCREEN_W, SCREEN_W, SCREEN_H, x + k, y + k, k, s, 0);
-   draw_text(dst, SCREEN_W, SCREEN_W, SCREEN_H, x, y, k, s, c);
-}
-
-/* the last frame shown, scaled to the screen and dimmed */
-static void menu_snapshot(void)
-{
-   unsigned x, y;
-   if (!menu_bg)
-      menu_bg = malloc(SCREEN_W * SCREEN_H * 2);
-   if (!menu_bg)
-      return;
-   if (!present_src || !present_w || !present_h)
-   {
-      memset(menu_bg, 0, SCREEN_W * SCREEN_H * 2);
-      return;
-   }
-   for (y = 0; y < SCREEN_H; y++)
-   {
-      const uint16_t *s = present_src + (size_t)(y * present_h / SCREEN_H) * (present_pitch / 2);
-      uint16_t *d = menu_bg + y * SCREEN_W;
-      for (x = 0; x < SCREEN_W; x++)
-      {
-         uint16_t p = s[x * present_w / SCREEN_W];
-         d[x] = (p >> 2) & 0x39E7;	/* a quarter of each channel */
-      }
-   }
-}
-
-/* the composed menu picture, shown as a frame */
-static void menu_show(const uint16_t *pic)
-{
-   struct retro_framebuffer fb;
-   memset(&fb, 0, sizeof(fb));
-   fb.width = SCREEN_W;
-   fb.height = SCREEN_H;
-   get_framebuffer(&fb);
-   memcpy(fb.data, pic, SCREEN_W * SCREEN_H * 2);
-   video_refresh(fb.data, SCREEN_W, SCREEN_H, SCREEN_W * 2);
-}
-
-enum { MI_RESUME, MI_RES, MI_FPS, MI_EXIT, MI_COUNT };
-
-/* RESOLUTION: the core's tyrquake_resolution, read at its start: a change restarts the game
- * (the resume state brings the player back). FPS: tyrquake_framerate, taken at once by the core
- * (SET_SYSTEM_AV_INFO): 30 is half the panel's 59.67 Hz, UNLIMITED is 200 (with real-time steps
- * the game then runs at its own speed). Both are written back to the options file. */
-static const char *const res_values[] = { "640x480", "320x240" };
-static const char *const fps_values[] = { "29.835", "59.67", "200" };
-static const char *const fps_labels[] = { "30", "60", "UNLIMITED" };
-#define NUM_RES (int)(sizeof(res_values) / sizeof(res_values[0]))
-#define NUM_FPS (int)(sizeof(fps_values) / sizeof(fps_values[0]))
-static char running_res[128];	/* the resolution the core started with */
-static int restart_request;	/* leaving the menu restarts tqrun (resolution) */
-
-static int res_index(void)
-{
-   const char *v = opt_get("tyrquake_resolution", "640x480");
-   int i;
-   for (i = 0; i < NUM_RES; i++)
-      if (!strcmp(v, res_values[i]))
-         return i;
-   return -1;
-}
-
-static int fps_index(void)
-{
-   double f = atof(opt_get("tyrquake_framerate", "59.67"));
-   return f < 45.0 ? 0 : f < 100.0 ? 1 : 2;
-}
-
-static void menu_compose(uint16_t *pic, int cur, int confirm)
-{
-   static const char *names[MI_COUNT] = { "RESUME", "RESOLUTION", "FPS", "EXIT GAME" };
-   char line[160];
-   int i, y0 = 150, step = 56;
-
-   memcpy(pic, menu_bg, SCREEN_W * SCREEN_H * 2);
-   draw_text_c(pic, 64, 3, "QUAKE", RGB565(200, 160, 90));
-   for (i = 0; i < MI_COUNT; i++)
-   {
-      uint16_t c = i == cur ? RGB565(255, 220, 64) : RGB565(170, 170, 170);
-      const char *mark = i == cur ? "> " : "";
-      if (i == MI_RES)
-      {
-         int r = res_index();
-         snprintf(line, sizeof(line), "%s%s  < %s >", mark, names[i],
-               r >= 0 ? res_values[r] : opt_get("tyrquake_resolution", "?"));
-      }
-      else if (i == MI_FPS)
-         snprintf(line, sizeof(line), "%s%s  < %s >", mark, names[i], fps_labels[fps_index()]);
-      else
-         snprintf(line, sizeof(line), "%s%s", mark, names[i]);
-      draw_text_c(pic, y0 + i * step, 3, line, c);
-   }
-   if (confirm)
-      draw_text_c(pic, 400, 2, "ARE YOU SURE? A: YES  B: NO", RGB565(255, 96, 64));
-   else if (restart_request)
-      draw_text_c(pic, 400, 2, "NEW RESOLUTION: THE GAME RESTARTS", RGB565(255, 160, 64));
-   else
-      draw_text_c(pic, 448, 2, "A: SELECT  B: BACK", RGB565(140, 140, 140));
-}
-
-/* left/right on RESOLUTION or FPS */
-static void menu_change_option(int item, int dir)
-{
-   if (item == MI_RES)
-   {
-      int r = res_index();
-      r = r < 0 ? 0 : (r + dir + NUM_RES) % NUM_RES;
-      opt_set("tyrquake_resolution", res_values[r], 1);
-      restart_request = strcmp(res_values[r], running_res) != 0;
-   }
-   else
-   {
-      int f = (fps_index() + dir + NUM_FPS) % NUM_FPS;
-      opt_set("tyrquake_framerate", fps_values[f], 1);
-      opts_changed = 1;	/* the core takes it at its next frame */
-   }
-   opts_save();
-}
-
-/* the menu's own key reading: presses only */
-static int menu_key;
-static void menu_read_keys(void)
-{
-   struct input_event ev[16];
-   ssize_t n;
-   if (input_fd < 0)
-      return;
-   while ((n = read(input_fd, ev, sizeof(ev))) > 0)
-   {
-      int i;
-      for (i = 0; i < n / (ssize_t)sizeof(ev[0]); i++)
-         if (ev[i].type == EV_KEY && ev[i].value == 1)
-         {
-            if (ev[i].code == KEY_POWER)
-               sleep_save_request = 1;
-            else
-               menu_key = ev[i].code;
-         }
-   }
-}
-
-static void menu_run(void)
-{
-   uint16_t *pic = malloc(SCREEN_W * SCREEN_H * 2);
-   int cur = MI_RESUME, confirm = 0, done = 0;
-
-   if (!pic)
-      return;
-   /* the game's frame finished on screen, then its picture under the menu */
-   pthread_mutex_lock(&present_mutex);
-   while (present_buf >= 0)
-      pthread_cond_wait(&present_cond, &present_mutex);
-   pthread_mutex_unlock(&present_mutex);
-   menu_snapshot();
-   if (!menu_bg)
-   {
-      free(pic);
-      return;
-   }
-   pad = 0;	/* no button stays held in the game */
-   menu_key = 0;
-
-   while (!done && !quit)
-   {
-      menu_compose(pic, cur, confirm);
-      menu_show(pic);
-      usleep(30000);
-      menu_read_keys();
-      if (sleep_save_request)
-      {
-         /* POWER with the menu open: the resume state as at the menu's opening */
-         sleep_save_request = 0;
-         state_save_resume();
-      }
-      if (!menu_key)
-         continue;
-      if (confirm)
-      {
-         if ((menu_key == KEY_SPACE || menu_key == KEY_ENTER) && cur == MI_EXIT)
-         {
-            quit = 1;	/* main saves the resume state */
-            done = 1;
-         }
-         confirm = 0;
-         menu_key = 0;
-         continue;
-      }
-      switch (menu_key)
-      {
-      case KEY_UP:
-         cur = (cur + MI_COUNT - 1) % MI_COUNT;
-         break;
-      case KEY_DOWN:
-         cur = (cur + 1) % MI_COUNT;
-         break;
-      case KEY_LEFT:
-         if (cur == MI_RES || cur == MI_FPS)
-            menu_change_option(cur, -1);
-         break;
-      case KEY_RIGHT:
-         if (cur == MI_RES || cur == MI_FPS)
-            menu_change_option(cur, 1);
-         break;
-      case KEY_LEFTCTRL:	/* B */
-      case KEY_ESC:	/* Menu */
-         done = 1;
-         break;
-      case KEY_SPACE:	/* A */
-      case KEY_ENTER:	/* START */
-         if (cur == MI_RESUME)
-            done = 1;
-         else if (cur == MI_RES || cur == MI_FPS)
-            menu_change_option(cur, 1);
-         else if (cur == MI_EXIT)
-            confirm = 1;
-         break;
-      }
-      menu_key = 0;
-   }
-   /* back in the game only once the buttons are up: the game reads them from here on */
-   free(pic);
-   pad = 0;
-   menu_request = 0;
-   menu_down_usec = 0;	/* Menu's release was read by the menu */
-   switcher_request = 0;
-   last_input_usec = now_usec();
-}
-
 /* ---- Onion's Game Switcher -------------------------------------------------------------------
  * A short press of Menu, as in Onion's RetroArch games: the resume state, a picture of the game
  * for the switcher, then tqrun ends and Onion's runtime.sh opens the Game Switcher
@@ -1489,23 +1222,22 @@ static uint32_t onion_hash(const char *s, size_t len)
    return h32 ^ (h32 >> 16);
 }
 
-/* the first entry's rompath, as Onion's history_getRecentPath reads it */
+/* the first game's rompath, as Onion's history_getRecentPath reads it; apps opened since (e.g.
+ * Tweaks, type 3, no rompath) come first in the list and are skipped, as the Game Switcher
+ * skips them */
 static int onion_recent_rompath(char *out, size_t size)
 {
    char line[2048];
-   const char *p, *e, *colon;
+   const char *p = NULL, *e, *colon;
    FILE *f = fopen(ONION_RECENT_HIDDEN, "r");
    if (!f)
       f = fopen(ONION_RECENT, "r");
    if (!f)
       return 0;
-   if (!fgets(line, sizeof(line), f))
-   {
-      fclose(f);
-      return 0;
-   }
+   while (fgets(line, sizeof(line), f))
+      if ((p = strstr(line, "\"rompath\":\"")))
+         break;
    fclose(f);
-   p = strstr(line, "\"rompath\":\"");
    if (!p)
       return 0;
    p += 11;
@@ -1854,17 +1586,8 @@ int main(int argc, char **argv)
       /* as RetroArch's auto-load: after the first frame (the core waits a few frames for it) */
       if (++runs == 1)
          state_load_from(state_path);
-      if (menu_down_usec && !menu_hold_fired && now_usec() - menu_down_usec > MENU_HOLD_USEC)
-      {
-         menu_hold_fired = 1;
-         menu_request = 1;	/* Menu held: this port's menu */
-      }
-      if (menu_request && !quit)
-      {
-         menu_run();
-         if (restart_request && !quit)
-            quit = 2;	/* a new resolution: save, then start again (below) */
-      }
+      if (restart_request && !quit)
+         quit = 2;	/* a new resolution: save, then start again (below) */
       if (switcher_request && !quit)
          quit = 3;	/* Menu pressed: save, then Onion's Game Switcher (below) */
       if (sleep_save_request)
