@@ -36,6 +36,7 @@ void M_Menu_Quit_f(void);
 void M_Game_StartNewGame(void);
 
 void M_DrawPic(int x, int y, const qpic_t *pic);
+void M_DrawTransPic(int x, int y, const qpic_t *pic);
 void M_DrawCharacter(int cx, int line, int num);
 void M_DrawTextBox(int x, int y, int width, int lines);
 void M_Print(int cx, int cy, const char *str);

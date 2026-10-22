@@ -25,6 +25,44 @@ What it changes, compared with the stock core:
 - Software-renderer fixes taken from standalone TyrQuake 0.71: large maps no longer drop
   surfaces or edges, liquids with non-64x64 textures, and oversized faces.
 
+## Without RetroArch (test version, branch `standalone`)
+
+The same core can also run without RetroArch, through its own small program (`tqrun`, in
+`miyoo/standalone/`), as an ordinary Onion port: **Quake (TyrQuake-Miyoo)** in the Ports list's
+FPS folder.
+
+- **About 20 % faster** than in RetroArch: an average timedemo frame takes 9.6-10.7 ms instead of
+  12.1-13.2 ms. The picture goes to the screen through the console's 2D engine, so the CPU does
+  no copying.
+- **Every frame shown in time with the screen** (59.67 Hz): frames come every 16-17 ms, where
+  RetroArch shows them in bursts of 12, 18 and 20 ms. The sound reaches the speaker exactly as
+  the game made it, with no resampling.
+- **Menu works as in Onion's RetroArch games:** a short press opens Onion's Game Switcher, and
+  picking Quake there brings you back where you were. Your place is also kept when you turn the
+  console off or it goes to sleep.
+- **Settings in Quake's own menu**, Options → Video Options:
+  - **Resolution** (640x480 or 320x240): choose with left/right, apply with A. The game then
+    starts again and comes back where you were.
+  - **Max FPS** (30, 60 or Unlimited): applies at once. 30 shows each frame for two of the
+    screen's refreshes. Unlimited runs the game as fast as it can, but the screen still shows at
+    most 59.67 frames a second.
+  - **Show FPS**: the game's frames per second, top right.
+- Quake's own savegames work as usual; the first start copies the RetroArch version's
+  savegames and settings.
+- **Cooler and easier on the battery** (measured with Wi-Fi off while playing):
+
+  | Mode | CPU busy (both cores) | Temperature | Battery |
+  |---|---|---|---|
+  | 320x240, 30 fps | 12 % | 59-64 °C | ~13 % an hour |
+  | 640x480, 60 fps | 49 % | 60-63 °C | ~15 % an hour |
+
+  RetroArch at 640x480 reached 70-75 °C. The battery figures are rough (whole percent steps).
+
+Install: unzip `TyrQuake-Miyoo-Standalone-<version>.zip` onto the SD card (or let Port Manager
+install it). Quake's data goes in `Roms/PORTS/Games/TyrQuake-Miyoo/id1/`; if Quake is already
+set up for the RetroArch version (`Quake Collection (TyrQuake)/id1`), that data is used.
+Building: `miyoo/standalone/build_tqrun.sh`, then `miyoo/standalone/package.sh`.
+
 ## Installing
 
 What you need:

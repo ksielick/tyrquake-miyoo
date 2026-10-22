@@ -113,6 +113,9 @@ static cvar_t scr_conspeed = { "scr_conspeed", "300" };
  * which picks min(vid.width/320, vid.height/200) clamped to >= 1.
  * Manual override values are clamped to 1..MAX_UI_SCALE. */
 cvar_t scr_uiscale = { "scr_uiscale", "0", true };
+/* scr_showfps: frames drawn per real second, top right (Video Options' Show
+ * FPS, branch standalone).  Off by default: the picture stays as it was. */
+cvar_t scr_showfps = { "scr_showfps", "0", true };
 static vrect_t *pconupdate;
 qboolean scr_skipupdate;
 
@@ -178,6 +181,49 @@ SCR_GetUIScale(void)
 }
 
 /* ============================================================================= */
+
+/*
+==============
+SCR_DrawFPS
+
+Screen updates counted against the frontend's clock, shown twice a second.
+==============
+*/
+static void
+SCR_DrawFPS(void)
+{
+   static double last_usec;
+   static int frames, shown;
+   char str[16];
+   double now;
+   int scale;
+
+   if (!scr_showfps.value)
+   {
+      last_usec = 0.0;
+      return;
+   }
+   now = perf_timing_now_usec();
+   frames++;
+   if (!last_usec || now - last_usec > 2e6)
+   {
+      last_usec = now;	/* (re)started: count from here */
+      frames = 0;
+   }
+   else if (now - last_usec >= 0.5e6)
+   {
+      shown = (int)(frames * 1e6 / (now - last_usec) + 0.5);
+      last_usec = now;
+      frames = 0;
+   }
+   if (key_dest == key_menu || !shown)
+      return;
+
+   scale = SCR_GetUIScale();
+   snprintf(str, sizeof(str), "%d fps", shown);
+   Draw_StringScaled((int)vid.width - ((int)strlen(str) + 1) * 8 * scale,
+		     scr_vrect.y + 8 * scale, str, scale);
+}
 
 /*
 ==============
@@ -850,6 +896,7 @@ SCR_UpdateScreen(void)
       SCR_DrawCenterString();
    } else {
       SCR_DrawNet();
+      SCR_DrawFPS();
       SCR_DrawCenterString();
       Sbar_Draw();
       SCR_DrawConsole();
@@ -908,6 +955,7 @@ SCR_Init(void)
     Cvar_RegisterVariable(&scr_centertime);
     Cvar_RegisterVariable(&scr_printspeed);
     Cvar_RegisterVariable(&scr_uiscale);
+    Cvar_RegisterVariable(&scr_showfps);
 
     Cmd_AddCommand("sizeup", SCR_SizeUp_f);
     Cmd_AddCommand("sizedown", SCR_SizeDown_f);

@@ -44,6 +44,7 @@ void SCR_AgeLoadingPlaque(float dt);
 #define MAX_UI_SCALE 8
 int SCR_GetUIScale(void);
 extern cvar_t scr_uiscale;
+extern cvar_t scr_showfps;
 
 extern float scr_con_current;
 extern float scr_centertime_off;

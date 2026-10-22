@@ -664,6 +664,228 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     remove it.
   - Kept sinc (Onion's quality setting 2).
 
+## Without RetroArch: tqrun (branch standalone, 2026-10-22, owner asked)
+- `miyoo/standalone/tqrun.c`: a minimal libretro frontend that runs the same core .so. It answers
+  the core's environment calls (options from a RetroArch .opt file, defaults from the core's
+  SET_VARIABLES, perf/log interfaces, lent frame buffers), reads the buttons from evdev
+  (Menu quits) and writes the sound to /dev/dsp through libpadsp (as RetroArch's OSS driver).
+  Frames: the core draws into two MMA buffers lent in turn; a present thread flushes the cache
+  and has the **SoC's 2D engine (MI_GFX_BitBlit, mirrored both ways = turned 180 degrees,
+  RGB565 -> ARGB8888)** put the frame into the hidden fb0 page, then FBIOPAN_DISPLAY. The
+  vendor libs are dlopen'ed (types copied from the SDK's mi_gfx_datatype.h layouts); TQ_GFX=0
+  or missing libs → CPU conversion (that took ~6 ms a frame on the present thread and made
+  the game slower than in RetroArch: avg 13.87 ms demo1). Idea from cacuracaptors'
+  OpenLara-miyoomini v1.0.9; Onion's RetroArch shows its frames through MI_GFX too.
+- Build: `miyoo/standalone/build_tqrun.sh` (dynamic, glibc ≤ 2.28: own `start.S` because the
+  toolchain's crt1.o needs __libc_start_main@GLIBC_2.34; dl*/pthread_* pinned to GLIBC_2.4 and
+  libdl.so.2 / libpthread.so.0 named explicitly; no _GNU_SOURCE, else __isoc23_strtol).
+- Bench: `FRONT=tqrun miyoo/tools/bench.sh <core> 640x480 demoN` (same content, options, saves;
+  VSYNC/SYNC/LAT/MAXF → -V/-A/-l/-n). Gotcha found: environment cases carry
+  RETRO_ENVIRONMENT_EXPERIMENTAL (GET_TARGET_SAMPLE_RATE): switch on the raw cmd, else the
+  core falls back to 44100 Hz.
+- A/B 640x480, core 7a446a25, two rounds alternated, audio_sync/vsync off (avg ms / main
+  thread CPU ms): demo1 RetroArch 12.65-12.79 / 11.95-12.05 → tqrun 10.23-10.26 / 10.12-10.13;
+  demo2 12.09-12.15 / 11.30-11.37 → 9.57-9.58 / 9.47-9.53; demo3 13.14-13.15 / 12.46-12.56 →
+  10.62-10.72 / 10.51-10.54. **~20 % faster**, ~1.9 ms a frame of the main thread (RetroArch's
+  video_cb copy, resampler, loop). The blit takes ~1.1 ms on the present thread (engine time).
+- Paced like play (RetroArch: audio_sync, sinc, 59.67 = the owner's override; tqrun: -V 1 -A 1):
+  demo3 RetroArch 136 frames over 20 ms (frames 300-359: 13-21 ms, bursts) → tqrun **5**, every
+  frame 16-17 ms (steady 59.671 fps, sound 48001/s, nothing dropped). demo1 RetroArch 117 →
+  tqrun 49: there the sound write blocked (1.74 ms/frame) and frames went 11/19/20 for a while:
+  the sound FIFO and the panel each pace; to do: with vsync, keep the sound from pacing
+  (non-blocking writes while the FIFO has room, wait only when it is nearly full).
+- Sound with vsync (commit 1d62071): a ring + a thread of its own writing to /dev/dsp, so only
+  the panel paces the game. libpadsp's FIFO is only 2 x 1 KiB (512 frames, GETOSPACE works) and
+  audioserver pulls it into its own buffer, so the ring is nearly empty while all is well; the
+  game makes 48001-48002 samples a second against 48000 played (the panel runs a hair fast), so
+  only one correction is needed: one frame left out when the ring holds > 1600 beyond the FIFO.
+  demo1/demo3 paced: 4-5 / 3 frames over 20 ms (RetroArch 117 / 136), frames 16-17 ms. The
+  played sound (dsp_tap) equals the core's output sample for sample except 4 frames left out at
+  0.17 s (start-up). An earlier try that also repeated frames when the ring ran low repeated
+  ~1000 (the ring is empty by design): don't.
+- Standalone port (commit 8333b0e, after mr-finster's miyoo64 ports, MIT):
+  - Menu button (Onion's keymon does nothing on Menu outside RetroArch/DraStic: MODE_APPS):
+    tqrun's own menu over the dimmed last frame, 8x8 public-domain font (font8x8.h): RESUME,
+    SAVE STATE / LOAD STATE slots 1-9 (left/right), EXIT GAME (LOAD/EXIT ask ARE YOU SURE?).
+    Notice "SAVED SLOT n" over the game for 2 s. (Slots removed again in ce8e06a, see below.)
+  - Resume state `saves/quake.state`: written on EXIT GAME, SIGTERM
+    (Onion's power-off), POWER press (before Onion's sleep, which may end in a power-off) and once
+    after 50 s without a button; tmp + fsync + rename; tied to the core file's contents (FNV-1a:
+    a reinstalled same build matches; another build → .rejected). Loaded after the first
+    retro_run. If the game can't be saved (demo, dead, intermission) the old resume state is
+    removed. Quitting from Quake's own menu removes it too (a deliberate quit starts afresh).
+    The core's state is the Quake savegame text padded with zeros: trailing zeros aren't written
+    (~42 KB, 30 ms).
+  - `miyoo/standalone/card/`: `launch.sh` (lower-cases id1 names; data from its own id1/ or from
+    `Quake Collection (TyrQuake)/id1`, where the owner's files are PAK0.PAK — the card's fs is
+    case-sensitive here, so the name is looked up; first start copies the RetroArch version's
+    savegames/config.cfg; libpadsp only with audioserver; performance governor; exec tqrun),
+    `Quake (TyrQuake-Miyoo).port` (Onion launch_standalone.sh, GameDataFile tqrun so it always
+    shows), `tyrquake.opt.default` (640x480, 59.67), README.txt. `package.sh` → `build/release/
+    TyrQuake-Miyoo-Standalone-<tag>.zip` (sdcard-root: Roms/PORTS/Games/TyrQuake-Miyoo +
+    Shortcuts/FPS). Port Manager entry `tyrquake-miyoo` in portmanager-miyoo's catalog.local.json
+    (needs a release Port Manager can download: the repo is private).
+  - Checked on the device: shortcut start → menu → EXIT GAME (screens fine); bench STATE=save
+    (LOAD=s0, SIGTERM) then STATE=load: the same picture after the resume.
+  - Installed on the card for the owner (2026-10-22): Games/TyrQuake-Miyoo, Shortcuts/FPS
+    (commit 8333b0e's tqrun, menu with save/load slots; the later commits aren't on the card).
+- Owner's first play (2026-10-22): sound louder than the RetroArch version (plays at Onion volume
+  50 %, the speaker can't take more); save/load state slots are too much: Quake's own saves +
+  Onion's Game Switcher are enough; asked for graphics options in the game's menu ("old-school"
+  feel); Wi-Fi came on during play (not ours: nothing in tqrun/launch.sh touches Wi-Fi; Onion's
+  runtime.sh only kills dropbear/smbd/... for games, the radio stays as set — asked the owner
+  whether it was off before).
+- Loudness: Onion's retroarch.cfg has audio_volume 0 dB, audio_driver oss through the same
+  libpadsp → audioserver path, and tqrun's played sound equals the core's output (dsp_tap), so
+  the difference must be elsewhere (Quake's volume/bgmvolume in config.cfg, Onion). To do on the
+  device: the same demo with DSPTAP=1 through RetroArch and through tqrun, compare levels (RMS,
+  peaks); compare saves/TyrQuake-Miyoo/id1/config.cfg with TyrQuake-Miyoo/saves/id1/config.cfg.
+- Menu as in Onion's RetroArch games (commit ce8e06a, not on the card yet):
+  - Onion's keymon acts on Menu only for RetroArch (MODE_GAME) and DraStic; for anything else
+    (MODE_APPS) it does nothing, so tqrun reads Menu itself.
+  - Short press: the resume state, a picture for the switcher, `touch
+    /mnt/SDCARD/.tmp_update/.runGameSwitcher`, exit; runtime.sh's check_switcher then runs
+    gameSwitcher instead of MainUI. The picture: `Saves/CurrentProfile/romScreens/<hash>.png`,
+    hash = Onion's FNV1A_Pippip_Yurii (utils/hash.h, reads 8 bytes past the end: pad) of the
+    first `"rompath"` in `Roms/recentlist.json` (or recentlist-hidden.json; type 5/17; a
+    "search:" prefix is cut at ':'), 640x480. tqrun writes it as a PNG with stored (uncompressed)
+    deflate blocks (~0.9 MB, no zlib). Picking the game in the switcher starts the shortcut
+    again → the resume state.
+  - Held 0.6 s: the port's menu: RESUME, RESOLUTION (640x480 / 320x240: written to
+    tyrquake.opt, the game saves and execv's itself, the resume state brings it back), FPS
+    (30 = 29.835, half the panel: the present thread waits one more FBIO_WAITFORVSYNC after the
+    pan; 60 = 59.67; UNLIMITED = 200 with real-time steps, no waiting for the panel), EXIT GAME.
+    The sound ring stays on in every FPS mode (play mode = started with -V 1).
+  - Core (commit 04a657e): framerate 29.835 added (option value and supported list); a changed
+    tyrquake_framerate is taken while running when the frontend accepts
+    RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO (tqrun does; RetroArch would too), else at the next
+    start. Resolution stays start-only (VID re-init would be a renderer rework).
+  - Not yet done because the console went offline (Wi-Fi/SSH timeouts at 10:05): pgo.sh +
+    shots for the changed core, the menu test through the real shortcut (stest3.sh in the
+    session scratchpad), pacing at 30 fps. build/core_pgo was restored to the release core
+    7a446a25 (backup build/core_pgo_ra_7a446a25) after the aborted PGO run overwrote it.
+- Owner's decision (2026-10-22): **remove the overlay menu entirely**; Menu = Game Switcher only;
+  RESOLUTION and FPS go into Quake's own menu as below. Proposal: in Quake's own Options →
+  "Video Options" (menu.c has the entry, hidden: vid_menudrawfn/vid_menukeyfn are NULL in the
+  libretro build), drawn like the 1996 DOS mode list; the core would hand the choice to the
+  frontend with RETRO_ENVIRONMENT_SET_VARIABLE (70) and tqrun would save it (and restart for a
+  resolution). Then Menu could be the Game Switcher only and the overlay menu could go.
+- Done that way (2026-10-22, owner asked; also asked for an FPS counter there):
+  - tqrun: overlay menu, hold logic and font8x8.h removed; Menu (on its release) = Game
+    Switcher. SET_VARIABLE: NULL → true (supported); known key → written to tyrquake.opt;
+    tyrquake_resolution ≠ the running one → after this retro_run quit = 2 (resume state, execv).
+  - Core (libretro.c): Video Options (vid_menudrawfn/vid_menukeyfn, set in VID_Init only when
+    SET_VARIABLE is supported, so RetroArch 1.22 shows it too): qplaque + p_option + "Video
+    Options", rows at y 48/56/64, values at x 220, cursor at 200 as the Options menu.
+    Resolution: left/right choose, A/ENTER applies a changed one ("Press A to apply: the
+    game starts again where you left it"). Max FPS 30/60/Unlimited = 29.835/59.67/200: written
+    with SET_VARIABLE and taken at once (set_running_framerate → SET_SYSTEM_AV_INFO). Show FPS =
+    new archived cvar scr_showfps (config.cfg). M_DrawTransPic exported from menu.c.
+  - FPS counter (screen.c SCR_DrawFPS): screen updates per second of the frontend's clock
+    (perf interface), refreshed every 0.5 s, "NN fps" top right of the view; hidden in menus.
+    With Unlimited it counts the game's frames, not the ones the panel shows (≤ 59.67).
+    Off by default; shots need it off (the bench copies the owner's config.cfg).
+  - Resolution in RetroArch: written to the core options, taken at the next start.
+  - PGO core 4bca0392 (tqrun d42a8717) installed on the card 2026-10-22 (old files and saves in
+    workspace backup/20261022-vmenu). Shots: all 59 identical to the release core 7a446a25
+    taken the same day (set rel_today). Both differ from td/ref by up to 9 per channel over the
+    whole picture: the shots copy the owner's config.cfg, and the owner set gamma 0.8 /
+    brightness 0.05 in the morning; td/ref was made with an older config (gamma 1 + brightness
+    0 gives 33, brightness 0 alone 20: unknown). Until shots.sh forces fixed picture cvars,
+    compare against the release core shot on the same day.
+  - Owner checked by hand: START → Options → Video → Video Options works; Unlimited shows over
+    100 fps in the 640x480 attract demos (the game's frames; the panel shows ≤ 59.67).
+  - Scripted test (sendkeys through the shortcut) didn't open Quake's menu with START during the
+    attract demo, though Menu (read by tqrun) worked and the events reach event0 (seen with
+    cat): cause not found; check by hand.
+  - Game Switcher picture missing after the owner opened Tweaks: recentlist.json's first entry
+    was the app (type 3, no rompath) and tqrun read only the first line. Now the first entry
+    with a rompath (tqrun 2ff68497).
+  - Core 7c643356 ("Press A to apply", shots 59/59 identical to rel_today) + tqrun 2ff68497 on
+    the card.
+  - Power/temperature with Wi-Fi off (owner asked; `miyoo/tools/power_log.sh` on the device
+    every 5 s, `py -3 miyoo/tools/power_log.py`), owner playing, performance governor:
+    320x240 @ 29.835: 18.5 min, CPU 11.6 % (both cores together), 1.1-1.2 GHz, 63 → 59 °C,
+    battery 99 → 95 % (~13 %/h); 640x480 @ 59.67: 11.9 min, CPU 48.5 %, 1.2 GHz, 60 → 63 °C,
+    95 → 92 % (~15 %/h). Voltage fell ~3 mV/min in both. Percent steps are 1 %, and the first
+    run started right off the charger: the battery figures are rough. Screen + rest of the SoC
+    dominate; the governor keeps 1.1-1.2 GHz even at 12 % load (ondemand untested). Much cooler
+    than RetroArch at 640x480 (70-75 °C).
+  - Ideas reviewed with the owner (2026-10-22, from a discussion with another AI):
+    - Lower clock per mode: the device offers 400/600/800/1000/1100/1200 MHz and the governors
+      userspace/powersave/ondemand/performance (no /sys/class/regulator: unknown whether the
+      core voltage follows the clock). Plan: a fixed scaling_max_freq per mode set by the port
+      (ondemand reacts late: stutter risk); first measure 320x240 @ 30 at 600 / 800 MHz (frame
+      times within 33.5 ms, temperature).
+    - Real power figures: /dev/i2c-0 and /dev/i2c-1 exist (no i2cget); AXP22x PMICs have a
+      battery discharge current ADC. Plan: a read-only probe (ioctl) to find the PMIC and read
+      it; no register writes without the owner's consent.
+    - d_mt.c's sched_yield() spins only while the main thread waits for the worker's half within
+      a flush (the imbalance, ≤ ~1 ms a frame); between frames every thread sleeps (condvars,
+      blocking ioctl/write): 11.6 % CPU at 30 fps agrees. A futex wait would save little.
+    - Panel at 30 Hz: not offered by the driver. Background daemons: 2.2 % CPU idle in the menu.
+  - Clock and overclock (2026-10-22, owner asked; bench MAXFREQ=<kHz>: up to 1200000 a
+    scaling_max_freq cap under the performance governor, above it Onion's
+    `.tmp_update/bin/cpuclock <MHz>` (PLL written directly, governor userspace, no voltage
+    change; restored with cpuclock 1200 + the menu's governor); `cpuclock` without arguments
+    reads the PLL and is logged as "PLL during the run"):
+    - 320x240 @ 29.835 paced (demo3): 30 fps at every clock from 400 to 1600 MHz; work per
+      frame 15.9 ms at 400, 10.5 at 600, 9.2 at 800, 6.4 at 1200 (p99 38 ms at 400, ~35 above).
+    - 640x480 unpaced demo3: 600 MHz 20.0 ms (50 fps), 800 15.5 (65), 1000 13.0 (77), 1200 11.2
+      (89), 1300 10.5 (95), 1400 10.0 (100), 1500 9.6 (104), 1600 9.2 (109; p99 14.9). +33 %
+      clock gives +22 % fps (memory doesn't speed up). demo1/demo2 at 1600: 112 / 118 fps.
+  - Power, measured properly (owner's USB meter on the charger, battery charging at constant
+    current; the console's share = meter × 5.16 V − Vbat × charge current, the AXP's charge
+    current reading being right: 1443 mA agreed with the meter): menu 2.2 W; 640x480 full load
+    2.6 W at 1200 MHz, 2.7 W at 1600 MHz; 320x240 @ 30 2.3 W at both 1200 and 600 MHz (meter
+    steps 0.01 A ≈ 50 mW, read by hand; includes charger losses). Screen, backlight, Wi-Fi and
+    the rest dominate; at 30 fps the clock doesn't matter. Overclocked it runs warmer (68-71 °C
+    vs 67-68), partly the charging.
+  - AXP221 power chip (miyoo/tools/axp_probe.c, read only, /dev/i2c-1 0x34, found by
+    disassembling Miyoo's axp_test: it reads 0x00/0x01 status, 0x78/0x79 voltage, 0xB9 %, 0x82
+    ADC enable = 0xE0): the charge current (0x7A/0x7B, 12 bit, 1 mA) is right; the discharge
+    current (0x7C/0x7D) reads ~500 mA whatever the load (also at 1600 MHz full load): don't
+    use it for load changes. power_log.sh logs both; per-run summary in the session scratchpad
+    (power_runs.py), not kept.
+  - Don't leave power_log.sh running: dethrace-miyoo's rules (GEMINI.md) forbid background
+    PMIC/battery logging during normal use (it competes with batmon / Battery Monitor on I2C).
+    Stop: touch /mnt/SDCARD/power_log.stop.
+  - Bug found and fixed (tqrun fc444b7a, on the card): after any tqrun run, Onion's Battery
+    Monitor (SDL 1.2, App/BatteryMonitorUI) showed a black screen until a reboot: its graph was
+    drawn on fb page 0 while page 1 (y=480, fb 640x1440) was shown. tqrun never released the MI
+    side: now video_shutdown waits for the 2D engine, MI_SYS_Munmap + MI_SYS_MMA_Free the lent
+    buffers, MI_GFX_Close, MI_SYS_Exit, and pans back to the page shown at the start. Checked:
+    reboot → tqrun run → Battery Monitor fine (before the fix: black after one 300-frame run).
+    miyoo/tools/fbpan.c pans fb0 by hand. The MI release is what mattered: after a clean boot,
+    fb0 panned to y=480 by hand (no tqrun) left MainUI and Battery Monitor fine.
+  - Onion and SSH/Samba (see the shared device memory): the services start only in runtime.sh's
+    loop (boot, after a game or app exits), not when Wi-Fi is switched on in MainUI's settings:
+    open and close any app (Tweaks, Port Manager) or a game afterwards. Onion's restore_state
+    can't parse its one-line JSON and its disable_flag uses an unset "$flag_" (toggles never
+    cleared), so the two bugs cancel out. RedOnion (Amiga500/Onion, beta 10) keeps the toggles
+    deliberately, starts services after a running game and leaves Wi-Fi power save on; the owner
+    waits for its stable release instead of patching Onion.
+  - Power use on battery and the battery-life estimate (2026-10-22, owner asked):
+    - The owner's USB meter, menu, full battery:
+      - 0.36 A with the screen and Wi-Fi on;
+      - 0.23 A with Wi-Fi off;
+      - 0.15 A with the screen dimmed;
+      - 0.14 A in Onion's sleep.
+    - Then on battery, power_log.sh in the menu: 415 mA (~1.70 W) with Wi-Fi on, 346 mA (~1.42 W) with Wi-Fi off. The steadiness of these readings suggests the AXP discharge reading is fine at idle. The ~500 mA flat readings above came from games, so keep both caveats.
+    - Nothing was logged while the console slept: Onion stops processes with SIGSTOP.
+    - On the charger with a full battery the AXP reads 0 mA: the console runs straight from USB.
+    - Estimate for 640x480 @ 59.67 with Wi-Fi off (battery ~11 Wh): ~6 h. Three figures support it:
+      - ~15 %/h in the 12-minute run above;
+      - the 1.42 W menu reading plus ~0.3 W for the game;
+      - the meter's 2.2 → 2.6 W from menu to full load.
+    - Brightness (~0.4 W) and Wi-Fi (~0.3 W) matter more than the clock.
+    - To confirm: a 30-60 min run from 100 % with Wi-Fi off and the logger on.
+  - Sound: "left out" grew to ~38 frames a second in these runs (841 in 22 s, 5369 in 100 s;
+    earlier runs left out only a few): to look into.
+- Next for a standalone port: the 8 bpp → colours pass on the 2D engine too
+  (MI_GFX_SetPalette + an I8 surface, ~2 ms of CPU now; pixels must match the shots); mission
+  pack shortcuts; a downloadable release for Port Manager (owner's decision: the repo is private).
+
 ## Next
 Done: profile (r_perf sections), second core for spans, surface caches, the palette pass and
 alias models. Every optimisation: shots identical to the one-thread reference (shots.sh +

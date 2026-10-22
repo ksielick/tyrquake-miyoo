@@ -173,7 +173,7 @@ M_PrintWhite(int cx, int cy, const char *str)
     }
 }
 
-static void
+void
 M_DrawTransPic(int x, int y, const qpic_t *pic)
 {
     int scale = SCR_GetUIScale();

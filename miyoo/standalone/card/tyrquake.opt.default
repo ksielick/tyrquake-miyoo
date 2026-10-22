@@ -1,0 +1,6 @@
+tyrquake_resolution = "640x480"
+tyrquake_framerate = "59.67"
+tyrquake_frame_steps = "realtime"
+tyrquake_sound_filter = "original"
+tyrquake_sound_samplerate = "auto"
+tyrquake_perf_log = "disabled"
