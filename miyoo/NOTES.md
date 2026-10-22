@@ -680,6 +680,13 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
      change that alters the picture; every optimisation must keep the shots identical.
   5. Overclocking (last).
 - Later: entity alpha (0.71), fence textures (owner postponed).
+- To check later (owner, 2026-10-22): Fiends can't follow the player through a low tunnel, they
+  keep leaping and bouncing off the ceiling instead of running. Likely id's own QuakeC
+  (CheckDemonJump looks only at height difference and range, always leaps at ~100-200 units, not
+  at the room overhead); not the Q_rand change (same distribution, the leap there isn't random).
+  Our real-time steps / 59.67 fps could still change the flight a little. Plan: same save in that
+  tunnel on the stock core vs ours (owner to name the map); a fix would change enemy behaviour,
+  so only if the owner wants it.
 - Release builds (owner's decision 2026-10-20, not done yet): the PGO profile is collected on
   the Miyoo (pgo.sh) and the .gcda files are committed to the repo; a GitHub Actions build uses
   them (-fprofile-use, -Wno-error=coverage-mismatch), no device or emulator in CI. Refresh the
