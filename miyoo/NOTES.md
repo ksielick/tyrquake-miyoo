@@ -921,10 +921,24 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
   Our real-time steps / 59.67 fps could still change the flight a little. Plan: same save in that
   tunnel on the stock core vs ours (owner to name the map); a fix would change enemy behaviour,
   so only if the owner wants it.
-- Release builds (owner's decision 2026-10-20, not done yet): the PGO profile is collected on
-  the Miyoo (pgo.sh) and the .gcda files are committed to the repo; a GitHub Actions build uses
-  them (-fprofile-use, -Wno-error=coverage-mismatch), no device or emulator in CI. Refresh the
-  profile on the device before a release. (Rejected: collecting it under QEMU in CI.)
+- Release builds (owner's decision 2026-10-20; set up 2026-10-22, commit 455e6e0): the PGO
+  profile is collected on the Miyoo (pgo.sh) into `miyoo/pgo/*.gcda` and committed;
+  `.github/workflows/miyoo-release.yml` (Arm GNU 13.3.rel1, Linux-hosted) runs
+  `miyoo/build/build_release.sh` (core with the profile + LTO, tqrun, both zips): by hand → an
+  artifact, a pushed tag `v*` → a draft pre-release. No device or emulator in CI. (Rejected:
+  collecting the profile under QEMU in CI.)
+  - Found on the way: GCC keys a static function's profile on the object's aux name (its full
+    path), so the old profiles fitted only `build/core_pgo` (elsewhere ~half the functions lost
+    their profile: 832 KB instead of 726 KB). Now `-dumpdir miyoo/pgo/` (relative) on every
+    compile: the ids are the same in any directory or checkout (checked with gcov-dump), and
+    `-fprofile-use` reads `miyoo/pgo/<object>.gcda` directly.
+  - Builds weren't reproducible (`__DATE__`/`__TIME__` in host.c/host_cmd.c): now
+    SOURCE_DATE_EPOCH = the last commit's time, plus `-frandom-seed=<source>`. Two local builds
+    in different directories and the Actions build (run 39818622854) gave the same core
+    9c5163a6 and tqrun fc444b7a, byte for byte. So a CI core = the local build of the same commit.
+  - The committed profile is the one behind core 7c643356, collected before `-dumpdir`: its
+    static functions don't match. Before the next release: pgo.sh on the device (new profile),
+    commit it, then shots + bench of the CI core.
 - Owner's ideas for later (2026-10-20): try the core on an R36 (Rockchip RK3326, ArkOS); a
   separate branch for a standalone port (Onion's GameSwitcher works only with RetroArch cores;
   mr-finster/miyoo64 gives its standalone games their own menu and save states instead).
