@@ -6,8 +6,8 @@
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
-MSSH=${MSSH:-/g/Emulacja/redriver2-miyoo/repos/REDRIVER2/miyoo/tools/mssh}
-SHARE='\\192.168.0.246\Roms\PORTS\Games\TyrQuake-bench'
+. "$REPO/miyoo/tools/env.sh"
+SHARE="\\\\${MIYOO_HOST:?set MIYOO_HOST, see miyoo/tools/env.sh}\\Roms\\PORTS\\Games\\TyrQuake-bench"
 DEV=/mnt/SDCARD/Roms/PORTS/Games/TyrQuake-bench
 CORE=$1
 shift

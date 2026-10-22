@@ -1,3 +1,6 @@
 *.o
 *.a
 *.so
+
+# local settings of the PC-side scripts (see miyoo/tools/env.sh)
+miyoo/env.local.sh

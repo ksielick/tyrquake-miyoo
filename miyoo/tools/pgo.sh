@@ -10,14 +10,14 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 WS=$(cd "$REPO/../.." && pwd)
-MSSH=${MSSH:-/g/Emulacja/redriver2-miyoo/repos/REDRIVER2/miyoo/tools/mssh}
-SHARE=//192.168.0.246/Roms
+. "$REPO/miyoo/tools/env.sh"
+SHARE=//${MIYOO_HOST:?set MIYOO_HOST, see miyoo/tools/env.sh}/Roms
 OUT=$WS/build/core_pgo
 DEMOS=${*:-demo1 demo2 demo3}
 
 [ -d "$WS/build" ] || { echo "no $WS/build" >&2; exit 1; }
 rm -rf "$OUT"
-# =/tmp/pgo: without a Linux directory the .gcda paths are the Windows ones (G:/...), which
+# =/tmp/pgo: without a Linux directory the .gcda paths are the Windows ones (drive letters), which
 # the device can't create, and this toolchain's gcov runtime then aborts (free(): invalid
 # pointer). LTO=1 applies to the final build only: the profile is read per unit before LTO.
 LTO= LDEXTRA="-fprofile-generate=/tmp/pgo" sh "$REPO/miyoo/build/build_core.sh" "$OUT" -O3 \

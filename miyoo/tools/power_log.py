@@ -9,9 +9,25 @@ battery percent and voltage at the start and end (with the drain per hour where 
 from the power chip (axp_probe columns, when present) the average discharge current and power.
 """
 import csv
+import os
 import sys
 
-DEFAULT = "//192.168.0.246/Roms/PORTS/Games/TyrQuake-bench/power_log.csv"
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def miyoo_host():
+    """MIYOO_HOST from the environment or miyoo/env.local.sh (see miyoo/tools/env.sh)."""
+    host = os.environ.get("MIYOO_HOST")
+    try:
+        with open(os.path.join(HERE, "..", "env.local.sh")) as f:
+            for line in f:
+                if not host and line.startswith("MIYOO_HOST="):
+                    host = line.split("=", 1)[1].strip().strip("\"'")
+    except OSError:
+        pass
+    if not host:
+        sys.exit("set MIYOO_HOST (the Miyoo's address), see miyoo/tools/env.sh")
+    return host
 
 
 def mode_of(r):
@@ -21,7 +37,8 @@ def mode_of(r):
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT
+    path = sys.argv[1] if len(sys.argv) > 1 else \
+        "//%s/Roms/PORTS/Games/TyrQuake-bench/power_log.csv" % miyoo_host()
     with open(path, newline="") as f:
         rows = list(csv.DictReader(f))
     if len(rows) < 2:

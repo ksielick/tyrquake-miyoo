@@ -16,11 +16,13 @@ Verified on the device: both load ("Loading game from s0.sav/s1.sav", no error),
 the level. Worth reporting upstream.
 
 ## Layout
-- `G:\Emulacja\tyrquake-miyoo\repos\tyrquake` — clone of github.com/libretro/tyrquake, branch
+- `<workspace>/repos/tyrquake` — clone of github.com/libretro/tyrquake, branch
   `retroarch` (the libretro core; called `miyoo` until 2026-10-20; base: upstream master 67db338,
   2026-10-12). Branch `standalone` (from 811be98, 2026-10-20): reserved for a standalone port.
 - `miyoo/build/build_core.sh` — builds `build/core/tyrquake_libretro.so` (+ `.unstripped.so`) with the
-  Arm GNU toolchain 13.3 from `G:\Emulacja\redriver2-miyoo\deps`, -O2 cortex-a7/neon-vfpv4, ~8 s.
+  Arm GNU toolchain 13.3 (`TC`), -O2 cortex-a7/neon-vfpv4, ~8 s.
+  Local settings (`MIYOO_HOST`, `MSSH`, `TC`): `miyoo/env.local.sh`, not in git (see
+  `miyoo/tools/env.sh`); every PC-side script reads it.
   Only .c timestamps are checked: `FORCE=1` after header changes. The script fails if any symbol needs
   glibc > 2.28 (the Miyoo's); `glibc_compat.h` (.symver for exp/log/pow) and `glibc_compat.c`
   (stat → __xstat, `-Wl,--wrap=stat`) keep it there.
@@ -504,7 +506,7 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
     r_misc.c (TransformVector & co. inlined into other units fuse differently). `NOLTO`
     (default common/r_misc.c) keeps sources out of LTO: then 59/59 identical.
 - pgo.sh had never run whole: with plain -fprofile-generate the .gcda paths are the Windows
-  ones (G:/...), the device can't create them and this toolchain's gcov runtime then aborts
+  ones (drive letters), the device can't create them and this toolchain's gcov runtime then aborts
   (free(): invalid pointer, exit 134, even a 1-line test program). Yesterday's build had used
   -fprofile-generate=/tmp/pgo by hand; pgo.sh does that now. An instrumented build runs ~2.7x
   slower (demo1 ~38 ms/frame).
@@ -519,7 +521,7 @@ resume would need our own save on exit). Cheaper first: music decoding (~1 ms) o
 - Owner: after PGO+LTO, light knocks only with music on; without music fine.
 - Core option "Performance Log" (`tyrquake_perf_log`, default off): perf_timing.c appends one
   CSV line per second to `perflog.csv` in the game's save folder (card:
-  `Saves/CurrentProfile/saves/TyrQuake/id1/`, SMB `//192.168.0.246/Saves/TyrQuake/id1/`), a
+  `Saves/CurrentProfile/saves/TyrQuake/id1/`, SMB `//<MIYOO_HOST>/Saves/TyrQuake/id1/`), a
   `# session` line (date, core, framerate, budget) and a header per start. Per second: frames,
   fps, frames >20/>25 ms apart, max interval, the frame's own work (wall minus the wait in
   audio_batch_cb) avg/p90 (0.25 ms histogram)/max, frames over the budget, real-time steps,

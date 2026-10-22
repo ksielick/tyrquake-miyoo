@@ -2,7 +2,7 @@
 
     py -3 miyoo/tools/perflog.py [perflog.csv] [--all] [--keep]
 
-Without a file it fetches //192.168.0.246/Saves/TyrQuake-Miyoo/id1/perflog.csv over SMB into
+Without a file it fetches //<MIYOO_HOST>/Saves/TyrQuake-Miyoo/id1/perflog.csv over SMB into
 <workspace>/build/perflog/perflog-<date>.csv and empties the card's copy (--keep: leave it).
 Prints the last session (--all: every session): totals, per-map table, the worst seconds, and
 writes a chart next to the CSV (<name>-<session>.png).
@@ -29,10 +29,25 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WS = os.path.normpath(os.path.join(HERE, "..", "..", "..", ".."))
-CARD = "//192.168.0.246/Saves/TyrQuake-Miyoo/id1/perflog.csv"
+
+
+def miyoo_host():
+    """MIYOO_HOST from the environment or miyoo/env.local.sh (see miyoo/tools/env.sh)."""
+    host = os.environ.get("MIYOO_HOST")
+    try:
+        with open(os.path.join(HERE, "..", "env.local.sh")) as f:
+            for line in f:
+                if not host and line.startswith("MIYOO_HOST="):
+                    host = line.split("=", 1)[1].strip().strip("\"'")
+    except OSError:
+        pass
+    if not host:
+        sys.exit("set MIYOO_HOST (the Miyoo's address), see miyoo/tools/env.sh")
+    return host
 
 
 def fetch(keep):
+    CARD = "//%s/Saves/TyrQuake-Miyoo/id1/perflog.csv" % miyoo_host()
     if not os.path.exists(CARD):
         sys.exit("no %s (is Performance Log on and the Miyoo awake?)" % CARD)
     out_dir = os.path.join(WS, "build", "perflog")

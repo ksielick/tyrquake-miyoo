@@ -25,7 +25,8 @@ if [ -n "$LTO" ]; then
 -fomit-frame-pointer -Wl,--wrap=exp,--wrap=log,--wrap=pow,--wrap=exp2,--wrap=log2
 -Wl,--wrap=pthread_create,--wrap=pthread_join"
 fi
-TC=${TC:-/g/Emulacja/redriver2-miyoo/deps/arm-gnu-toolchain-13.3.rel1-mingw-w64-i686-arm-none-linux-gnueabihf/bin}
+. "$REPO/miyoo/tools/env.sh"
+[ -n "$TC" ] || { echo "no Arm toolchain: set TC, see miyoo/tools/env.sh" >&2; exit 1; }
 CC="$TC/arm-none-linux-gnueabihf-gcc"
 JOBS=${JOBS:-8}
 

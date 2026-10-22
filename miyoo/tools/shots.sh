@@ -13,8 +13,8 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 WS=$(cd "$REPO/../.." && pwd)
-MSSH=${MSSH:-/g/Emulacja/redriver2-miyoo/repos/REDRIVER2/miyoo/tools/mssh}
-SHARE=//192.168.0.246/Roms
+. "$REPO/miyoo/tools/env.sh"
+SHARE=//${MIYOO_HOST:?set MIYOO_HOST, see miyoo/tools/env.sh}/Roms
 CORE=${1:?usage: shots.sh core.so set_name [every] [demo ...]}
 NAME=${2:?usage: shots.sh core.so set_name [every] [demo ...]}
 EVERY=${3:-50}
