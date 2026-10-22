@@ -15,6 +15,17 @@ console's CPU cores. The picture stays exactly as Quake drew it.
 - **Your savegames load.** Quake's own saves work as they should.
 - **Clean sound.** No crackle when the action gets busy.
 
+How fast it runs at 640x480, compared with Onion's stock TyrQuake core (Quake's timedemos with
+no frame limit, average fps; the screen shows up to 60, so above that there's room to spare):
+
+| Timedemo | Stock TyrQuake | TyrQuake-Miyoo in RetroArch | TyrQuake-Miyoo without RetroArch |
+|---|---|---|---|
+| demo1 | 50 fps | 79 fps | 98 fps |
+| demo2 | 58 fps | 83 fps | 104 fps |
+| demo3 | 48 fps | 76 fps | 94 fps |
+
+The stock core drops below 60 fps in all three demos; this one is well above it on average.
+
 ## Two versions
 
 - **In RetroArch** (`TyrQuake-Miyoo-<version>.zip`): its own core next to the stock TyrQuake
