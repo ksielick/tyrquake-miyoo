@@ -33,6 +33,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/soundcard.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -126,7 +127,7 @@ static int opts_changed;	/* the core reads its options again (GET_VARIABLE_UPDAT
 /* the options the file had plus the menu's, back into the file (tmp + rename) */
 static void opts_save(void)
 {
-   char tmp[600];
+   char tmp[640];
    FILE *f;
    int i;
 
@@ -511,7 +512,6 @@ static bool get_framebuffer(struct retro_framebuffer *fb)
    return true;
 }
 
-static void notice_draw(uint16_t *dst, unsigned w, unsigned h, size_t pitch);
 
 static void RETRO_CALLCONV video_refresh(const void *data, unsigned w, unsigned h, size_t pitch)
 {
@@ -553,7 +553,6 @@ static void RETRO_CALLCONV video_refresh(const void *data, unsigned w, unsigned 
          memcpy(lend_buf[k] + y * SCREEN_W, (const uint8_t *)data + y * pitch, (w < SCREEN_W ? w : SCREEN_W) * 2);
       pitch = SCREEN_W * 2;
    }
-   notice_draw(lend_buf[k], w, h, pitch);
    present_src = lend_buf[k];
    present_w = w;
    present_h = h;
@@ -843,8 +842,13 @@ static int key_to_pad(int code)
    return -1;
 }
 
-static volatile int menu_request, sleep_save_request;
+static volatile int menu_request, sleep_save_request, switcher_request;
 static double last_input_usec;	/* the last button change: the idle save */
+/* Menu as in Onion's RetroArch games: a short press opens the Game Switcher, holding it
+ * (MENU_HOLD_USEC) this port's menu */
+#define MENU_HOLD_USEC 600000.0
+static double menu_down_usec;	/* Menu went down then (0: not down) */
+static int menu_hold_fired;
 
 /* every key change goes here, read by the game (input_poll) or by the menu (menu_keys) */
 static void key_event(int code, int down)
@@ -854,7 +858,16 @@ static void key_event(int code, int down)
    if (code == KEY_ESC)
    {
       if (down)
-         menu_request = 1;	/* Menu: the menu opens after this frame */
+      {
+         menu_down_usec = last_input_usec;
+         menu_hold_fired = 0;
+      }
+      else if (menu_down_usec)
+      {
+         if (!menu_hold_fired)
+            switcher_request = 1;
+         menu_down_usec = 0;
+      }
       return;
    }
    if (code == KEY_POWER)
@@ -1041,26 +1054,18 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void *data)
  * Onion's SIGTERM at power-off) writes the core's state; the next start loads it. Written to a
  * new file, synced, then renamed over the old one, so a power-off in the middle keeps the last
  * good state. A state from another build of the core isn't loaded: it is kept as .rejected. */
-static const char *state_path;	/* the resume state; the menu's slots are <state_path>1..9 */
+static const char *state_path;	/* the resume state (-S) */
 static char **saved_argv;	/* for the restart after a new resolution */
 static char state_build[64];	/* the core file's size and time: a rebuilt core rejects old states */
 
 #define STATE_MAGIC "TQRS0001"
-
-static void slot_path(char *out, size_t size, int slot)
-{
-   if (slot)
-      snprintf(out, size, "%s%d", state_path, slot);
-   else
-      snprintf(out, size, "%s", state_path);
-}
 
 /* 1 written, 0 failed, -1 the game can't be saved now (no game running, dead, intermission) */
 static int state_save_to(const char *path)
 {
    size_t size, nb;
    unsigned char *buf;
-   char tmp[600];
+   char tmp[640];
    FILE *f;
    double t0 = now_usec();
 
@@ -1167,26 +1172,16 @@ static int state_load_from(const char *path)
    return ok;
 }
 
-static int state_exists(const char *path)
-{
-   FILE *f = fopen(path, "rb");
-   if (f)
-      fclose(f);
-   return f != NULL;
-}
-
-/* ---- the menu (Menu button) -----------------------------------------------------------------
+/* ---- the menu (Menu held) -------------------------------------------------------------------
  * Laid out as mr-finster's miyoo64 menus (MIT): over a dimmed picture of the game, RESUME,
- * SAVE STATE, LOAD STATE (slots 1-9, left/right), EXIT GAME. Up/down choose, A or START act
- * (LOAD and EXIT ask "ARE YOU SURE?" first), B or Menu go back. Drawn with an 8x8 font into a
- * lent frame buffer and shown like a game frame. A short notice ("SAVED SLOT 3") shows over the
- * game's frames for two seconds afterwards. */
+ * RESOLUTION, FPS (left/right), EXIT GAME. Up/down choose, A or START act (EXIT asks "ARE YOU
+ * SURE?" first), B or Menu go back. Drawn with an 8x8 font into a lent frame buffer and shown
+ * like a game frame. Saving is Quake's own (its menu) plus the resume state Onion's Game
+ * Switcher brings back (a short press of Menu). */
 #include "font8x8.h"
 
 #define RGB565(r, g, b) (uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3))
 static uint16_t *menu_bg;	/* the game's last frame, dimmed, 640x480 */
-static char notice[48];
-static double notice_until;
 
 static void draw_text(uint16_t *dst, int pitch_px, int w, int h, int x, int y, int k, const char *s, uint16_t c)
 {
@@ -1220,22 +1215,6 @@ static void draw_text_c(uint16_t *dst, int y, int k, const char *s, uint16_t c)
    int x = (SCREEN_W - (int)strlen(s) * 8 * k) / 2;
    draw_text(dst, SCREEN_W, SCREEN_W, SCREEN_H, x + k, y + k, k, s, 0);
    draw_text(dst, SCREEN_W, SCREEN_W, SCREEN_H, x, y, k, s, c);
-}
-
-static void notice_set(const char *s)
-{
-   snprintf(notice, sizeof(notice), "%s", s);
-   notice_until = now_usec() + 2000000.0;
-}
-
-/* on a game frame, top left (scaled to the frame's size) */
-static void notice_draw(uint16_t *dst, unsigned w, unsigned h, size_t pitch)
-{
-   int k = w >= 640 ? 2 : 1;
-   if (!notice[0] || now_usec() > notice_until)
-      return;
-   draw_text(dst, (int)(pitch / 2), (int)w, (int)h, 8 + k, 8 + k, k, notice, 0);
-   draw_text(dst, (int)(pitch / 2), (int)w, (int)h, 8, 8, k, notice, RGB565(255, 220, 64));
 }
 
 /* the last frame shown, scaled to the screen and dimmed */
@@ -1275,7 +1254,7 @@ static void menu_show(const uint16_t *pic)
    video_refresh(fb.data, SCREEN_W, SCREEN_H, SCREEN_W * 2);
 }
 
-enum { MI_RESUME, MI_SAVE, MI_LOAD, MI_RES, MI_FPS, MI_EXIT, MI_COUNT };
+enum { MI_RESUME, MI_RES, MI_FPS, MI_EXIT, MI_COUNT };
 
 /* RESOLUTION: the core's tyrquake_resolution, read at its start: a change restarts the game
  * (the resume state brings the player back). FPS: tyrquake_framerate, taken at once by the core
@@ -1305,25 +1284,19 @@ static int fps_index(void)
    return f < 45.0 ? 0 : f < 100.0 ? 1 : 2;
 }
 
-static void menu_compose(uint16_t *pic, int cur, int slot, int confirm)
+static void menu_compose(uint16_t *pic, int cur, int confirm)
 {
-   static const char *names[MI_COUNT] = { "RESUME", "SAVE STATE", "LOAD STATE", "RESOLUTION", "FPS", "EXIT GAME" };
-   char line[160], path[600];
-   int i, y0 = 116, step = 48;
+   static const char *names[MI_COUNT] = { "RESUME", "RESOLUTION", "FPS", "EXIT GAME" };
+   char line[160];
+   int i, y0 = 150, step = 56;
 
    memcpy(pic, menu_bg, SCREEN_W * SCREEN_H * 2);
-   draw_text_c(pic, 48, 3, "QUAKE", RGB565(200, 160, 90));
+   draw_text_c(pic, 64, 3, "QUAKE", RGB565(200, 160, 90));
    for (i = 0; i < MI_COUNT; i++)
    {
       uint16_t c = i == cur ? RGB565(255, 220, 64) : RGB565(170, 170, 170);
       const char *mark = i == cur ? "> " : "";
-      if (i == MI_SAVE || i == MI_LOAD)
-      {
-         slot_path(path, sizeof(path), slot);
-         snprintf(line, sizeof(line), "%s%s  < %d >%s", mark, names[i], slot,
-               i == MI_LOAD && !(state_path && state_exists(path)) ? " EMPTY" : "");
-      }
-      else if (i == MI_RES)
+      if (i == MI_RES)
       {
          int r = res_index();
          snprintf(line, sizeof(line), "%s%s  < %s >", mark, names[i],
@@ -1336,9 +1309,9 @@ static void menu_compose(uint16_t *pic, int cur, int slot, int confirm)
       draw_text_c(pic, y0 + i * step, 3, line, c);
    }
    if (confirm)
-      draw_text_c(pic, 420, 2, "ARE YOU SURE? A: YES  B: NO", RGB565(255, 96, 64));
+      draw_text_c(pic, 400, 2, "ARE YOU SURE? A: YES  B: NO", RGB565(255, 96, 64));
    else if (restart_request)
-      draw_text_c(pic, 420, 2, "NEW RESOLUTION: THE GAME RESTARTS", RGB565(255, 160, 64));
+      draw_text_c(pic, 400, 2, "NEW RESOLUTION: THE GAME RESTARTS", RGB565(255, 160, 64));
    else
       draw_text_c(pic, 448, 2, "A: SELECT  B: BACK", RGB565(140, 140, 140));
 }
@@ -1386,10 +1359,8 @@ static void menu_read_keys(void)
 
 static void menu_run(void)
 {
-   static int slot = 1;
    uint16_t *pic = malloc(SCREEN_W * SCREEN_H * 2);
    int cur = MI_RESUME, confirm = 0, done = 0;
-   char path[600];
 
    if (!pic)
       return;
@@ -1409,7 +1380,7 @@ static void menu_run(void)
 
    while (!done && !quit)
    {
-      menu_compose(pic, cur, slot, confirm);
+      menu_compose(pic, cur, confirm);
       menu_show(pic);
       usleep(30000);
       menu_read_keys();
@@ -1423,19 +1394,10 @@ static void menu_run(void)
          continue;
       if (confirm)
       {
-         if (menu_key == KEY_SPACE || menu_key == KEY_ENTER)
+         if ((menu_key == KEY_SPACE || menu_key == KEY_ENTER) && cur == MI_EXIT)
          {
-            if (cur == MI_LOAD)
-            {
-               slot_path(path, sizeof(path), slot);
-               notice_set(state_load_from(path) ? "LOADED" : "NOT LOADED");
-               done = 1;
-            }
-            else if (cur == MI_EXIT)
-            {
-               quit = 1;	/* main saves the resume state */
-               done = 1;
-            }
+            quit = 1;	/* main saves the resume state */
+            done = 1;
          }
          confirm = 0;
          menu_key = 0;
@@ -1450,15 +1412,11 @@ static void menu_run(void)
          cur = (cur + 1) % MI_COUNT;
          break;
       case KEY_LEFT:
-         if (cur == MI_SAVE || cur == MI_LOAD)
-            slot = slot > 1 ? slot - 1 : 9;
-         else if (cur == MI_RES || cur == MI_FPS)
+         if (cur == MI_RES || cur == MI_FPS)
             menu_change_option(cur, -1);
          break;
       case KEY_RIGHT:
-         if (cur == MI_SAVE || cur == MI_LOAD)
-            slot = slot < 9 ? slot + 1 : 1;
-         else if (cur == MI_RES || cur == MI_FPS)
+         if (cur == MI_RES || cur == MI_FPS)
             menu_change_option(cur, 1);
          break;
       case KEY_LEFTCTRL:	/* B */
@@ -1471,25 +1429,6 @@ static void menu_run(void)
             done = 1;
          else if (cur == MI_RES || cur == MI_FPS)
             menu_change_option(cur, 1);
-         else if (cur == MI_SAVE)
-         {
-            int r;
-            char msg[32];
-            slot_path(path, sizeof(path), slot);
-            r = state_path ? state_save_to(path) : 0;
-            if (r > 0)
-               snprintf(msg, sizeof(msg), "SAVED SLOT %d", slot);
-            else
-               snprintf(msg, sizeof(msg), "%s", r < 0 ? "CAN'T SAVE NOW" : "NOT SAVED");
-            notice_set(msg);
-            done = 1;
-         }
-         else if (cur == MI_LOAD)
-         {
-            slot_path(path, sizeof(path), slot);
-            if (state_path && state_exists(path))
-               confirm = 1;
-         }
          else if (cur == MI_EXIT)
             confirm = 1;
          break;
@@ -1500,7 +1439,232 @@ static void menu_run(void)
    free(pic);
    pad = 0;
    menu_request = 0;
+   menu_down_usec = 0;	/* Menu's release was read by the menu */
+   switcher_request = 0;
    last_input_usec = now_usec();
+}
+
+/* ---- Onion's Game Switcher -------------------------------------------------------------------
+ * A short press of Menu, as in Onion's RetroArch games: the resume state, a picture of the game
+ * for the switcher, then tqrun ends and Onion's runtime.sh opens the Game Switcher
+ * (.tmp_update/.runGameSwitcher). Picking the game there starts the shortcut again, and the
+ * resume state puts the player back. The picture goes where Onion's keymon puts RetroArch's:
+ * Saves/CurrentProfile/romScreens/<hash of the recent list's first rompath>.png. */
+#define ONION_RECENT "/mnt/SDCARD/Roms/recentlist.json"
+#define ONION_RECENT_HIDDEN "/mnt/SDCARD/Roms/recentlist-hidden.json"
+#define ONION_ROMSCREENS "/mnt/SDCARD/Saves/CurrentProfile/romScreens"
+#define ONION_SWITCHER_FLAG "/mnt/SDCARD/.tmp_update/.runGameSwitcher"
+
+/* Onion's utils/hash.h (FNV1A_Pippip_Yurii, by Kaze), reading 8 bytes past the end as it does */
+static uint32_t onion_hash(const char *s, size_t len)
+{
+   char buf[600];
+   const char *str = buf;
+   const uint32_t PRIME = 591798841;
+   uint64_t h64 = 14695981039346656037ULL, w;
+   uint32_t h32;
+
+   if (len + 8 > sizeof(buf))
+      return 0;
+   memset(buf, 0, sizeof(buf));
+   memcpy(buf, s, len);
+   if (len > 8)
+   {
+      size_t cycles = ((len - 1) >> 4) + 1, ndhead = len - (cycles << 3);
+      for (; cycles--; str += 8)
+      {
+         memcpy(&w, str, 8);
+         h64 = (h64 ^ w) * PRIME;
+         memcpy(&w, str + ndhead, 8);
+         h64 = (h64 ^ w) * PRIME;
+      }
+   }
+   else
+   {
+      memcpy(&w, str, 8);
+      w = len ? (w << ((8 - len) << 3)) >> ((8 - len) << 3) : 0;
+      h64 = (h64 ^ w) * PRIME;
+   }
+   h32 = (uint32_t)(h64 ^ (h64 >> 32));
+   return h32 ^ (h32 >> 16);
+}
+
+/* the first entry's rompath, as Onion's history_getRecentPath reads it */
+static int onion_recent_rompath(char *out, size_t size)
+{
+   char line[2048];
+   const char *p, *e, *colon;
+   FILE *f = fopen(ONION_RECENT_HIDDEN, "r");
+   if (!f)
+      f = fopen(ONION_RECENT, "r");
+   if (!f)
+      return 0;
+   if (!fgets(line, sizeof(line), f))
+   {
+      fclose(f);
+      return 0;
+   }
+   fclose(f);
+   p = strstr(line, "\"rompath\":\"");
+   if (!p)
+      return 0;
+   p += 11;
+   e = strchr(p, '"');
+   if (!e || (size_t)(e - p) >= size)
+      return 0;
+   colon = memchr(p, ':', e - p);	/* "launched with the search panel" form */
+   if (colon)
+      p = colon + 1;
+   memcpy(out, p, e - p);
+   out[e - p] = 0;
+   return 1;
+}
+
+static uint32_t crc_table[256];
+static uint32_t png_crc(uint32_t c, const uint8_t *b, size_t n)
+{
+   size_t i;
+   if (!crc_table[1])
+   {
+      uint32_t k, j;
+      for (k = 0; k < 256; k++)
+      {
+         uint32_t v = k;
+         for (j = 0; j < 8; j++)
+            v = v & 1 ? 0xEDB88320u ^ (v >> 1) : v >> 1;
+         crc_table[k] = v;
+      }
+   }
+   for (i = 0; i < n; i++)
+      c = crc_table[(c ^ b[i]) & 255] ^ (c >> 8);
+   return c;
+}
+
+static void put_be32(uint8_t *p, uint32_t v)
+{
+   p[0] = v >> 24;
+   p[1] = v >> 16;
+   p[2] = v >> 8;
+   p[3] = v;
+}
+
+/* a PNG chunk: length, type, data, CRC */
+static void png_chunk(FILE *f, const char *type, const uint8_t *data, uint32_t len)
+{
+   uint8_t hdr[8], crcb[4];
+   uint32_t c;
+   put_be32(hdr, len);
+   memcpy(hdr + 4, type, 4);
+   c = png_crc(0xFFFFFFFFu, hdr + 4, 4);
+   c = png_crc(c, data, len) ^ 0xFFFFFFFFu;
+   put_be32(crcb, c);
+   fwrite(hdr, 8, 1, f);
+   if (len)
+      fwrite(data, len, 1, f);
+   fwrite(crcb, 4, 1, f);
+}
+
+/* the last frame shown, 640x480 RGB, as a PNG with stored (uncompressed) deflate blocks */
+static int write_romscreen(const char *path)
+{
+   static const uint8_t sig[8] = { 137, 'P', 'N', 'G', 13, 10, 26, 10 };
+   const size_t row = 1 + SCREEN_W * 3, raw = row * SCREEN_H;
+   const size_t nblocks = (raw + 65534) / 65535;
+   size_t zlen = 2 + raw + nblocks * 5 + 4, pos = 0, i, x, y;
+   uint8_t ihdr[13], *z, *img;
+   uint32_t a = 1, b = 0;
+   char tmp[640];
+   FILE *f;
+
+   if (!present_src || !present_w || !present_h)
+      return 0;
+   img = malloc(raw);
+   z = malloc(zlen);
+   if (!img || !z)
+   {
+      free(img);
+      free(z);
+      return 0;
+   }
+   for (y = 0; y < SCREEN_H; y++)
+   {
+      const uint16_t *s = present_src + (size_t)(y * present_h / SCREEN_H) * (present_pitch / 2);
+      uint8_t *d = img + y * row;
+      *d++ = 0;	/* no filter */
+      for (x = 0; x < SCREEN_W; x++)
+      {
+         uint32_t p = s[x * present_w / SCREEN_W], r = (p >> 11) & 31, g = (p >> 5) & 63, bl = p & 31;
+         *d++ = r << 3 | r >> 2;
+         *d++ = g << 2 | g >> 4;
+         *d++ = bl << 3 | bl >> 2;
+      }
+   }
+   z[pos++] = 0x78;
+   z[pos++] = 0x01;
+   for (i = 0; i < raw; i += 65535)
+   {
+      size_t n = raw - i < 65535 ? raw - i : 65535;
+      z[pos++] = i + n == raw;	/* BFINAL on the last, BTYPE 00 (stored) */
+      z[pos++] = n & 255;
+      z[pos++] = n >> 8;
+      z[pos++] = ~n & 255;
+      z[pos++] = (~n >> 8) & 255;
+      memcpy(z + pos, img + i, n);
+      pos += n;
+   }
+   for (i = 0; i < raw; i++)
+   {
+      a = (a + img[i]) % 65521;
+      b = (b + a) % 65521;
+   }
+   put_be32(z + pos, b << 16 | a);
+   pos += 4;
+   free(img);
+
+   put_be32(ihdr, SCREEN_W);
+   put_be32(ihdr + 4, SCREEN_H);
+   ihdr[8] = 8;	/* bit depth */
+   ihdr[9] = 2;	/* RGB */
+   ihdr[10] = ihdr[11] = ihdr[12] = 0;
+   snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+   if (!(f = fopen(tmp, "wb")))
+   {
+      free(z);
+      return 0;
+   }
+   fwrite(sig, 8, 1, f);
+   png_chunk(f, "IHDR", ihdr, 13);
+   png_chunk(f, "IDAT", z, (uint32_t)pos);
+   png_chunk(f, "IEND", NULL, 0);
+   free(z);
+   if (fflush(f) || fsync(fileno(f)))
+   {
+      fclose(f);
+      remove(tmp);
+      return 0;
+   }
+   fclose(f);
+   return rename(tmp, path) == 0;
+}
+
+/* before tqrun ends for the switcher: the picture and the flag (the resume state is main's) */
+static void switcher_prepare(void)
+{
+   char rompath[512], png[600];
+   FILE *f;
+
+   if (onion_recent_rompath(rompath, sizeof(rompath)))
+   {
+      mkdir(ONION_ROMSCREENS, 0777);
+      snprintf(png, sizeof(png), ONION_ROMSCREENS "/%u.png",
+            (unsigned)onion_hash(rompath, strlen(rompath)));
+      fprintf(stderr, "tqrun: Game Switcher picture %s (%s): %s\n", png, rompath,
+            write_romscreen(png) ? "written" : "not written");
+   }
+   else
+      fprintf(stderr, "tqrun: no recent list entry: Game Switcher without a picture\n");
+   if ((f = fopen(ONION_SWITCHER_FLAG, "w")))
+      fclose(f);
 }
 
 /* ---- main ---------------------------------------------------------------------------------- */
@@ -1690,12 +1854,19 @@ int main(int argc, char **argv)
       /* as RetroArch's auto-load: after the first frame (the core waits a few frames for it) */
       if (++runs == 1)
          state_load_from(state_path);
+      if (menu_down_usec && !menu_hold_fired && now_usec() - menu_down_usec > MENU_HOLD_USEC)
+      {
+         menu_hold_fired = 1;
+         menu_request = 1;	/* Menu held: this port's menu */
+      }
       if (menu_request && !quit)
       {
          menu_run();
          if (restart_request && !quit)
             quit = 2;	/* a new resolution: save, then start again (below) */
       }
+      if (switcher_request && !quit)
+         quit = 3;	/* Menu pressed: save, then Onion's Game Switcher (below) */
       if (sleep_save_request)
       {
          /* POWER: written before Onion's sleep, which may end in a power-off */
@@ -1727,6 +1898,8 @@ int main(int argc, char **argv)
    }
    else if (quit)
       state_save_resume();
+   if (quit == 3)
+      switcher_prepare();
    ring_stop();
 
    if (core.unload_game)
