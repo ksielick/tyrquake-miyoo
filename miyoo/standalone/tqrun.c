@@ -33,6 +33,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/soundcard.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -46,7 +47,9 @@ __asm__(".symver dlerror,dlerror@GLIBC_2.4");
 __asm__(".symver dlclose,dlclose@GLIBC_2.4");
 __asm__(".symver pthread_create,pthread_create@GLIBC_2.4");
 __asm__(".symver pthread_join,pthread_join@GLIBC_2.4");
+__asm__(".symver __xstat,__xstat@GLIBC_2.4");
 #endif
+extern int __xstat(int ver, const char *path, struct stat *buf);
 
 #define SCREEN_W 640
 #define SCREEN_H 480
@@ -68,6 +71,9 @@ static struct {
    bool (*load_game)(const struct retro_game_info *);
    void (*unload_game)(void);
    void (*run)(void);
+   size_t (*serialize_size)(void);
+   bool (*serialize)(void *, size_t);
+   bool (*unserialize)(const void *, size_t);
 } core;
 
 static volatile sig_atomic_t quit;
@@ -529,8 +535,188 @@ static void audio_init(void)
       fprintf(stderr, "tqrun: /dev/dsp setup failed\n");
    if (rate != OUT_RATE)
       fprintf(stderr, "tqrun: /dev/dsp runs at %d Hz, not %d\n", rate, OUT_RATE);
-   if (!audio_sync)
+   if (!audio_sync && !vsync)
       fcntl(dsp_fd, F_SETFL, fcntl(dsp_fd, F_GETFL) | O_NONBLOCK);
+}
+
+/* With vsync the panel paces the game, and the sound goes through a ring to a thread of its own
+ * that writes it to /dev/dsp: a blocking write in the game's thread would pace the game too, and
+ * the two clocks fought (frames 11/19/20 ms). The panel and the sound run within ~0.002 % of
+ * each other (59.672 fps, 48002 samples/s measured), so the queue drifts very slowly. The ring is
+ * nearly empty while all is well (libpadsp's FIFO is only 2 x 1 KiB = 512 frames, and audioserver
+ * pulls it into its own buffer); when the ring holds more than RING_TARGET beyond the FIFO, one
+ * frame is left out (every few seconds at most), which keeps every other sample exact. */
+#define RING_FRAMES 16384	/* stereo frames, 341 ms */
+#define RING_TARGET 1600	/* frames kept queued beyond the FIFO: 33 ms, two game frames */
+#define RING_CHUNK 512		/* frames per write */
+static int16_t ring[RING_FRAMES * 2];
+static unsigned long long ring_in, ring_out;	/* frames written / read, ever */
+static int ring_running, ring_quit, ring_prebuffer = 1;
+static pthread_mutex_t ring_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t ring_cond = PTHREAD_COND_INITIALIZER;
+static pthread_t ring_thread;
+static unsigned long st_ring_dups, st_ring_skips;
+static int dsp_space_ok = -1;	/* SNDCTL_DSP_GETOSPACE works: -1 not known yet */
+static long dsp_total_frames, dsp_queued_frames;
+
+static void *ring_proc(void *arg)
+{
+   int16_t chunk[RING_CHUNK * 2];
+   (void)arg;
+   for (;;)
+   {
+      size_t n, i;
+      const uint8_t *p;
+      size_t left;
+
+      pthread_mutex_lock(&ring_mutex);
+      for (;;)
+      {
+         unsigned long long fill = ring_in - ring_out;
+         if (ring_quit)
+            break;
+         /* the ring is empty most of the time: the sound waits in audioserver's FIFO, which
+          * this thread keeps full; only the first start queues RING_TARGET first */
+         if (ring_prebuffer ? fill >= RING_TARGET : fill > 0)
+            break;
+         pthread_cond_wait(&ring_cond, &ring_mutex);
+      }
+      if (ring_quit)
+      {
+         pthread_mutex_unlock(&ring_mutex);
+         break;
+      }
+      ring_prebuffer = 0;
+      n = ring_in - ring_out;
+      if (n > RING_CHUNK)
+         n = RING_CHUNK;
+      for (i = 0; i < n; i++)
+      {
+         size_t k = (size_t)((ring_out + i) % RING_FRAMES) * 2;
+         chunk[i * 2] = ring[k];
+         chunk[i * 2 + 1] = ring[k + 1];
+      }
+      ring_out += n;
+      pthread_cond_broadcast(&ring_cond);
+      pthread_mutex_unlock(&ring_mutex);
+
+      p = (const uint8_t *)chunk;
+      left = n * 4;
+      while (left)
+      {
+         ssize_t w = write(dsp_fd, p, left);
+         if (w < 0)
+         {
+            if (errno == EINTR)
+               continue;
+            break;
+         }
+         p += w;
+         left -= w;
+      }
+
+      /* how much the FIFO holds now: the queue the drift is judged by */
+      if (dsp_space_ok)
+      {
+         audio_buf_info info;
+         if (ioctl(dsp_fd, SNDCTL_DSP_GETOSPACE, &info) == 0 && info.fragstotal > 0 && info.fragsize > 0)
+         {
+            long total = (long)info.fragstotal * info.fragsize / 4;
+            long queued = total - info.bytes / 4;
+            pthread_mutex_lock(&ring_mutex);
+            if (dsp_space_ok < 0)
+               fprintf(stderr, "tqrun: sound FIFO %ld frames (%d x %d bytes)\n", total,
+                     info.fragstotal, info.fragsize);
+            dsp_space_ok = 1;
+            dsp_total_frames = total;
+            dsp_queued_frames = queued < 0 ? 0 : queued;
+            pthread_mutex_unlock(&ring_mutex);
+         }
+         else
+         {
+            fprintf(stderr, "tqrun: SNDCTL_DSP_GETOSPACE unsupported: only a growing queue is trimmed\n");
+            dsp_space_ok = 0;
+         }
+      }
+   }
+   return NULL;
+}
+
+static void ring_start(void)
+{
+   if (dsp_fd < 0 || ring_running)
+      return;
+   ring_running = 1;
+   pthread_create(&ring_thread, NULL, ring_proc, NULL);
+}
+
+static void ring_stop(void)
+{
+   if (!ring_running)
+      return;
+   pthread_mutex_lock(&ring_mutex);
+   ring_quit = 1;
+   pthread_cond_broadcast(&ring_cond);
+   pthread_mutex_unlock(&ring_mutex);
+   pthread_join(ring_thread, NULL);
+   ring_running = 0;
+}
+
+static void ring_push(const int16_t *data, size_t frames)
+{
+   unsigned long long fill;
+   size_t i;
+   int adjust = 0;	/* +1: repeat the last frame, -1: leave the last frame out */
+
+   pthread_mutex_lock(&ring_mutex);
+   fill = ring_in - ring_out;
+   if (!ring_prebuffer && frames > 1)
+   {
+      if (dsp_space_ok > 0)
+      {
+         /* audioserver pulls the FIFO into a buffer of its own that can't be seen from here, so
+          * the ring is nearly empty while all is well; it grows only when the game makes more
+          * than is played (48002 a second measured: the panel runs a hair fast) */
+         long queued = (long)fill + dsp_queued_frames;
+         if (queued > dsp_total_frames + RING_TARGET)
+            adjust = -1;
+      }
+      else if (fill > RING_TARGET * 3)
+         adjust = -1;
+   }
+   if (adjust < 0)
+   {
+      frames--;
+      st_ring_skips++;
+   }
+   /* full (only without the panel pacing, or if the sound stopped): audio sync waits */
+   while (ring_in - ring_out + frames + 1 > RING_FRAMES && !ring_quit)
+   {
+      if (!audio_sync)
+      {
+         st_audio_dropped += frames;
+         pthread_mutex_unlock(&ring_mutex);
+         return;
+      }
+      pthread_cond_wait(&ring_cond, &ring_mutex);
+   }
+   for (i = 0; i < frames; i++)
+   {
+      size_t k = (size_t)((ring_in + i) % RING_FRAMES) * 2;
+      ring[k] = data[i * 2];
+      ring[k + 1] = data[i * 2 + 1];
+   }
+   ring_in += frames;
+   if (adjust > 0)
+   {
+      size_t k = (size_t)(ring_in % RING_FRAMES) * 2;
+      ring[k] = data[(frames - 1) * 2];
+      ring[k + 1] = data[(frames - 1) * 2 + 1];
+      ring_in++;
+      st_ring_dups++;
+   }
+   pthread_cond_broadcast(&ring_cond);
+   pthread_mutex_unlock(&ring_mutex);
 }
 
 static size_t RETRO_CALLCONV audio_batch(const int16_t *data, size_t frames)
@@ -542,6 +728,13 @@ static size_t RETRO_CALLCONV audio_batch(const int16_t *data, size_t frames)
    st_audio_frames += frames;
    if (dsp_fd < 0)
       return frames;
+   if (vsync)
+   {
+      ring_start();
+      ring_push(data, frames);
+      st_awrite_usec += now_usec() - t0;
+      return frames;
+   }
    while (left)
    {
       ssize_t n = write(dsp_fd, p, left);
@@ -760,6 +953,110 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void *data)
    return false;
 }
 
+/* ---- the resume state -----------------------------------------------------------------------
+ * As mr-finster's miyoo64 ports do (MIT, docs/SLEEP-AND-WAKE.md): leaving the game (Menu,
+ * Onion's SIGTERM at power-off) writes the core's state; the next start loads it. Written to a
+ * new file, synced, then renamed over the old one, so a power-off in the middle keeps the last
+ * good state. A state from another build of the core isn't loaded: it is kept as .rejected. */
+static const char *state_path;
+static char state_build[64];	/* the core file's size and time: a rebuilt core rejects old states */
+
+#define STATE_MAGIC "TQRS0001"
+
+static int state_save(void)
+{
+   size_t size, nb;
+   void *buf;
+   char tmp[600];
+   FILE *f;
+   double t0 = now_usec();
+
+   if (!state_path || !core.serialize_size || !core.serialize)
+      return 0;
+   size = core.serialize_size();
+   if (!size || !(buf = malloc(size)))
+      return 0;
+   if (!core.serialize(buf, size))
+   {
+      fprintf(stderr, "tqrun: the core wrote no state\n");
+      free(buf);
+      return 0;
+   }
+   snprintf(tmp, sizeof(tmp), "%s.tmp", state_path);
+   f = fopen(tmp, "wb");
+   if (!f)
+   {
+      fprintf(stderr, "tqrun: %s: %s\n", tmp, strerror(errno));
+      free(buf);
+      return 0;
+   }
+   nb = fwrite(STATE_MAGIC, 8, 1, f) + fwrite(state_build, sizeof(state_build), 1, f)
+         + fwrite(&size, sizeof(size), 1, f) + fwrite(buf, size, 1, f);
+   free(buf);
+   if (nb != 4 || fflush(f) || fsync(fileno(f)))
+   {
+      fprintf(stderr, "tqrun: %s: write failed\n", tmp);
+      fclose(f);
+      remove(tmp);
+      return 0;
+   }
+   fclose(f);
+   if (rename(tmp, state_path))
+   {
+      fprintf(stderr, "tqrun: %s: %s\n", state_path, strerror(errno));
+      return 0;
+   }
+   fprintf(stderr, "tqrun: state saved (%zu bytes, %.0f ms)\n", size, (now_usec() - t0) / 1000.0);
+   return 1;
+}
+
+static void state_reject(const char *why)
+{
+   char rej[600];
+   snprintf(rej, sizeof(rej), "%s.rejected", state_path);
+   rename(state_path, rej);
+   fprintf(stderr, "tqrun: state not loaded: %s; kept as %s\n", why, rej);
+}
+
+static void state_load(void)
+{
+   char magic[8], build[sizeof(state_build)];
+   size_t size;
+   void *buf;
+   FILE *f;
+
+   if (!state_path || !core.unserialize || !(f = fopen(state_path, "rb")))
+      return;
+   if (fread(magic, 8, 1, f) != 1 || memcmp(magic, STATE_MAGIC, 8)
+         || fread(build, sizeof(build), 1, f) != 1 || fread(&size, sizeof(size), 1, f) != 1
+         || size == 0 || size > 64u << 20)
+   {
+      fclose(f);
+      state_reject("not a tqrun state");
+      return;
+   }
+   if (memcmp(build, state_build, sizeof(build)))
+   {
+      fclose(f);
+      state_reject("written by another build of the core");
+      return;
+   }
+   buf = malloc(size);
+   if (!buf || fread(buf, size, 1, f) != 1)
+   {
+      free(buf);
+      fclose(f);
+      state_reject("cut short");
+      return;
+   }
+   fclose(f);
+   if (core.unserialize(buf, size))
+      fprintf(stderr, "tqrun: state loaded (%zu bytes)\n", size);
+   else
+      state_reject("the core refused it");
+   free(buf);
+}
+
 /* ---- main ---------------------------------------------------------------------------------- */
 
 /* start.S hands these to __libc_start_main (no crt1.o / crti.o: see there) */
@@ -811,7 +1108,7 @@ int main(int argc, char **argv)
    int c;
    double t_start, t_end, t_run0;
 
-   while ((c = getopt(argc, argv, "L:o:s:n:V:A:l:v")) != -1)
+   while ((c = getopt(argc, argv, "L:o:s:n:V:A:l:S:v")) != -1)
    {
       switch (c)
       {
@@ -822,6 +1119,7 @@ int main(int argc, char **argv)
       case 'V': vsync = atoi(optarg); break;
       case 'A': audio_sync = atoi(optarg); break;
       case 'l': audio_latency = atoi(optarg); break;
+      case 'S': state_path = optarg; break;
       case 'v': verbose = 2; break;
       default:
          fprintf(stderr, "usage: tqrun [-L core.so] [-o options] [-s savedir] [-n frames] [-V 0|1] [-A 0|1] [-l ms] content\n");
@@ -868,6 +1166,9 @@ int main(int argc, char **argv)
    *(void **)&core.load_game = core_sym(h, "retro_load_game");
    *(void **)&core.unload_game = core_sym(h, "retro_unload_game");
    *(void **)&core.run = core_sym(h, "retro_run");
+   *(void **)&core.serialize_size = core_sym(h, "retro_serialize_size");
+   *(void **)&core.serialize = core_sym(h, "retro_serialize");
+   *(void **)&core.unserialize = core_sym(h, "retro_unserialize");
    if (!core.init || !core.run || !core.load_game || !core.set_environment)
       return 1;
 
@@ -906,12 +1207,21 @@ int main(int argc, char **argv)
       fprintf(stderr, "tqrun: WARNING: the core makes %.0f Hz, the sound is played at %d Hz\n",
             av.timing.sample_rate, OUT_RATE);
 
+   {
+      struct stat st;
+      if (!__xstat(3, core_path, &st))	/* stat is a real symbol only since glibc 2.33 */
+         snprintf(state_build, sizeof(state_build), "%lld/%lld", (long long)st.st_size, (long long)st.st_mtime);
+   }
+
    t_start = now_usec();
    while (!quit && !shutdown_req && (!max_frames || st_frames < max_frames))
    {
       t_run0 = now_usec();
       core.run();
       st_run_usec += now_usec() - t_run0;
+      /* as RetroArch's auto-load: after the first frame (the core waits a few frames for it) */
+      if (st_frames == 1)
+         state_load();
    }
    t_end = now_usec();
 
@@ -920,6 +1230,17 @@ int main(int argc, char **argv)
    while (present_buf >= 0)
       pthread_cond_wait(&present_cond, &present_mutex);
    pthread_mutex_unlock(&present_mutex);
+
+   /* leaving the game (Menu, SIGTERM): the resume state; quitting from Quake's own menu ends
+    * the game, and the next start begins afresh */
+   if (shutdown_req)
+   {
+      if (state_path && !remove(state_path))
+         fprintf(stderr, "tqrun: quit from the game: resume state removed\n");
+   }
+   else if (quit)
+      state_save();
+   ring_stop();
 
    if (core.unload_game)
       core.unload_game();
@@ -936,6 +1257,7 @@ int main(int argc, char **argv)
             "(of which sound write %.2f, waiting for the panel %.2f)\n",
             st_frames, (t_end - t_start) / 1e6, n / ((t_end - t_start) / 1e6),
             st_run_usec / n / 1000.0, st_awrite_usec / n / 1000.0, st_vwait_usec / n / 1000.0);
+      fprintf(stderr, "tqrun: sound: %lu frames repeated, %lu left out\n", st_ring_dups, st_ring_skips);
       fprintf(stderr, "tqrun: shown %lu, dropped %lu, dupes %lu; present thread: convert %.2f ms, "
             "pan %.2f ms per shown frame; sound %lu frames, %lu dropped\n",
             st_presented, st_dropped, st_dupes, st_convert_usec / np / 1000.0,
