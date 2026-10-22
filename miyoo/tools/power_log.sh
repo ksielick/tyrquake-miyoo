@@ -6,7 +6,8 @@
 # Stop: touch /mnt/SDCARD/power_log.stop (or kill it). Output: Roms/PORTS/Games/TyrQuake-bench/power_log.csv (SMB share Roms)
 # Columns: uptime_s, cpu jiffies (busy, total: /proc/stat's first line), clock kHz, temp C,
 # battery %, voltage mV, charging, tqrun running (0/1), resolution, framerate, then from axp_probe
-# (next to this script; the power chip read over I2C, read only) averaged over the interval:
+# (next to this script; the power chip read over I2C, read only) once per row (fewer reads keep
+# the I2C bus free for Onion's batmon; min = max = the one reading):
 # battery mV, discharge mA (average, min, max), charge mA. CPU % = delta busy / delta total
 # between rows (both cores together).
 EVERY=${1:-5}
@@ -32,8 +33,9 @@ while [ ! -f $STOP ]; do
 	pidof tqrun >/dev/null 2>&1 && tq=1
 	res=$(sed -n 's/^tyrquake_resolution = "\(.*\)"/\1/p' $OPT 2>/dev/null)
 	fps=$(sed -n 's/^tyrquake_framerate = "\(.*\)"/\1/p' $OPT 2>/dev/null)
-	# the interval itself: 5 samples a second, averaged
-	pm=$("$PROBE" avg $((EVERY * 5)) 200 2>/dev/null) || { pm=""; sleep $EVERY; }
+	# one reading per row, then wait out the interval
+	pm=$("$PROBE" avg 1 2>/dev/null) || pm=""
+	sleep $EVERY
 	echo "$up,$busy,$total,$khz,$temp,$pct,$mv,$chg,$tq,$res,$fps,$(echo $pm | tr ' ' ',')" >> $OUT
 done
 rm -f $STOP
