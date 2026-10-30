@@ -25,7 +25,7 @@ What it changes, compared with the stock core:
 - Software-renderer fixes taken from standalone TyrQuake 0.71: large maps no longer drop
   surfaces or edges, liquids with non-64x64 textures, and oversized faces.
 
-## Without RetroArch (test version, branch `standalone`)
+## Without RetroArch (test version)
 
 The same core can also run without RetroArch, through its own small program (`tqrun`, in
 `miyoo/standalone/`), as an ordinary Onion port: **Quake (TyrQuake-Miyoo)** in the Ports list's
@@ -245,19 +245,36 @@ summarises it with a chart. Leave it off for normal play.
 
 ## Building
 
-From Git Bash on Windows, with the Arm GNU toolchain 13.3 (`arm-none-linux-gnueabihf`, path in
-`TC`, see the script):
+With the [Arm GNU toolchain 13.3.rel1](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+(`arm-none-linux-gnueabihf`), from Git Bash on Windows or a Linux shell. The scripts expect the
+repo inside a workspace folder (`<workspace>/repos/tyrquake`) and write to `<workspace>/build/`.
+Local settings go in `miyoo/env.local.sh`, which git ignores (see `miyoo/tools/env.sh`):
+
+```sh
+TC=/path/to/arm-gnu-toolchain/bin   # not needed if arm-none-linux-gnueabihf-gcc is in PATH
+MIYOO_HOST=192.168.1.50             # the Miyoo's address, for the tools that use the console
+MSSH=/path/to/mssh                  # runs a command on the Miyoo over SSH
+```
 
 ```sh
 miyoo/build/build_core.sh                 # -> <workspace>/build/core/tyrquake_libretro.so
-miyoo/tools/package_release.sh v1.0       # -> <workspace>/build/release/TyrQuake-Miyoo-v1.0.zip
+miyoo/standalone/build_tqrun.sh           # -> <workspace>/build/standalone/tqrun
+miyoo/build/build_release.sh v1.0         # both release zips -> <workspace>/build/release/
 ```
 
+`build_core.sh` alone gives a plain `-O2` core. The release build (`build_release.sh`) uses
+profile-guided and link-time optimisation with the profile committed in `miyoo/pgo/`, which
+`miyoo/tools/pgo.sh` collects by running the timedemos on the console. The build is
+reproducible: the same commit gives the same bytes on Windows and on Linux. GitHub Actions
+(`.github/workflows/miyoo-release.yml`) runs `build_release.sh` for a pushed `v*` tag and makes a
+draft release with both zips.
+
 The build fails if the core needs a glibc newer than OnionOS's 2.28. After changing a header, build
-with `FORCE=1`. The release script needs Python 3.
+with `FORCE=1`. The release scripts need Python 3.
 
 `miyoo/tools/bench.sh` runs a timedemo on the console over SSH, kept apart from the player's setup
-in `/tmp/tqbench`. `miyoo/NOTES.md` has the measurements, the renderer changes and the device
+in `/tmp/tqbench`, and `miyoo/tools/shots.sh` with `shots_compare.py` checks that the picture
+hasn't changed. `miyoo/NOTES.md` has the measurements, the renderer changes and the device
 details.
 
 ## License

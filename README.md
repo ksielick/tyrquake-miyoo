@@ -78,3 +78,13 @@ versions can live side by side: each keeps its own saves and settings.
 More about the Game Switcher, settings, mission packs and building:
 **[miyoo/README.md](miyoo/README.md)**.
 Measurements and technical notes: [miyoo/NOTES.md](miyoo/NOTES.md).
+
+Found a bug? Open an [issue](https://github.com/ksielick/tyrquake-miyoo/issues), saying which
+version and which zip you use.
+
+## Credits and license
+
+Quake is by id Software. [TyrQuake](https://disenchant.net/tyrquake/) is by Kevin Shanahan, and
+the [libretro core](https://github.com/libretro/tyrquake) by the libretro team. This port builds
+on their work and is GPL v2 like them (see [LICENSE.txt](LICENSE.txt)). Quake's game data is not
+included.
