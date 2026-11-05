@@ -981,3 +981,31 @@ shots_compare.py) before timing. Now 640x480 avg 13.9 / 13.1 / 14.3 ms (demo1/2/
   Ideas: test Onion's defaults without overrides; the frontend's audio buffer status callback
   (fill level, underrun warning) to add samples or warn when audio_sync is off; README
   recommended settings.
+
+## Branch `argon` — Quake II backports & optimizations (2026-11-05)
+Backported optimizations proven in the Quake II (`Argon`) port to TyrQuake:
+1. **Dynamic Triangle-Weight Polygon Row Splitting (`common/d_polyse.c`)**:
+   - Replaced naive geometric / EMA split with a 1D vertical weight histogram (`poly_row_diff[cvmin] += w; poly_row_diff[cvmax] -= w;` where `w = (umax - umin) + 16`).
+   - Resolves core starvation bug where view-weapon or floor-level monsters kept `poly_ms[0] < 0.05`, freezing `poly_split` at 0.5f and forcing core 1 to render 100% of the triangles alone while core 0 yielded.
+2. **Local Register Caching for Band Limits (`common/d_scan.c`, `common/d_edge.c`, `common/d_sky.c`)**:
+   - Cached `d_band_v0` and `(d_band_v1 - d_band_v0)` in CPU registers (`r4`/`r5`) before inner span loops under `-fno-strict-aliasing`, completely eliminating per-span TLS lookups.
+3. **Inlined Fast Ceil (`R_FastCeilF` in `common/r_draw.c`)**:
+   - Replaced `ceilf()` in `R_EmitEdge` with fast float-to-int ceiling (`i + ((float)i < x)`), eliminating libm `@plt` branch overhead.
+4. **L2 + R2 View Centering Combo (`common/libretro.c`)**:
+   - Implemented `IN_TriggerEvent` state machine tracking `RETRO_DEVICE_ID_JOYPAD_L2` and `RETRO_DEVICE_ID_JOYPAD_R2`.
+   - When both triggers are held, it immediately cancels active `+lookup` / `+lookdown` key states, resets pitch to horizontal (`cl.viewangles[PITCH] = 0; V_StopPitchDrift();`), and suppresses trigger jitter until both are released.
+5. **1600 MHz Overclock & Performance Governor in Launchers**:
+   - Enabled `PerformanceMode=1` and explicit 1600 MHz clock cap in `1996 Quake.port`, mission pack shortcuts, and standalone `launch.sh`.
+
+### Verification & Device Benchmarks (640x480, Miyoo Mini Plus, `demo1`)
+- **Visual Accuracy**: **59/59 screenshots 100% bit-identical** across `demo1`, `demo2`, `demo3` compared to reference (`OK: all identical`, 0 pixels diff).
+- **RetroArch Performance @ 1200 MHz (stock)**:
+  - `timedemo wall`: **74.70 fps** (avg 13.39 ms, median 13.05 ms, p90 16.32 ms, p99 19.18 ms, max 25.79 ms). Up from 49.8 fps / 20.1 ms baseline (**+50.0% gain**).
+  - CPU load: **151% of a core** (both cores actively rendering in balance).
+- **RetroArch Performance @ 1600 MHz (overclock)**:
+  - `timedemo wall`: **85.50 fps** (avg 11.70 ms, median 11.40 ms, p90 14.09 ms, p99 15.86 ms, max 43.99 ms). Only 2 frames over 20 ms out of 969.
+- **Standalone `tqrun` @ 1200 MHz (stock)**:
+  - `timedemo wall`: **90.66 fps** (avg 11.03 ms, median 10.70 ms, p90 14.05 ms, p99 16.86 ms, max 23.53 ms), CPU 165% of a core.
+- **Standalone `tqrun` @ 1600 MHz (overclock)**:
+  - `timedemo wall`: **111.12 fps** (avg 9.00 ms, median 8.70 ms, p90 11.36 ms, p99 13.39 ms, max 20.81 ms). Only 1 frame over 20 ms out of 969!
+
