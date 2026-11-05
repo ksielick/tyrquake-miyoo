@@ -1,7 +1,7 @@
 #!/bin/sh
-# Quake (TyrQuake-Miyoo) for the Miyoo Mini Plus (OnionOS), without RetroArch
+# Quake for the Miyoo Mini Plus (OnionOS), without RetroArch
 # https://github.com/ksielick/tyrquake-miyoo (branch standalone)
-GameName="Quake (TyrQuake-Miyoo)"
+GameName="Quake"
 GameDir="TyrQuake-Miyoo"
 GameExecutable="launch.sh"
 # the program itself: the shortcut always shows; launch.sh tells if Quake's data is missing

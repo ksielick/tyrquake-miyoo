@@ -24,7 +24,7 @@ SC="Roms/PORTS/Shortcuts/FPS"
 [ -f "$TQRUN" ] || { echo "no tqrun at $TQRUN: build it with miyoo/standalone/build_tqrun.sh" >&2; exit 1; }
 
 rm -rf "$STAGE"
-mkdir -p "$STAGE/$G/id1" "$STAGE/$SC"
+mkdir -p "$STAGE/$G/id1" "$STAGE/$SC" "$STAGE/Roms/PORTS/Imgs"
 cp "$TQRUN" "$STAGE/$G/tqrun"
 cp "$CORE" "$STAGE/$G/tyrquake_libretro.so"
 C=$REPO/miyoo/standalone/card
@@ -32,9 +32,10 @@ cp "$C/launch.sh" "$C/tyrquake.opt.default" "$C/README.txt" "$STAGE/$G/"
 cp "$REPO/LICENSE.txt" "$STAGE/$G/LICENSE.txt"
 echo "Put Quake's id1 files here: pak0.pak, pak1.pak (full game), music/ (optional)." \
 	> "$STAGE/$G/id1/put_your_quake_files_here.txt"
-cp "$C/Quake (TyrQuake-Miyoo).port" "$STAGE/$SC/"
+cp "$C/Quake.port" "$STAGE/$SC/"
+[ -f "$C/Quake.png" ] && cp "$C/Quake.png" "$STAGE/$SC/" && cp "$C/Quake.png" "$STAGE/Roms/PORTS/Imgs/"
 # shell scripts with LF line ends whatever git's autocrlf did (busybox sh fails on CRLF)
-sed -i 's/\r$//' "$STAGE/$G/launch.sh" "$STAGE/$SC/Quake (TyrQuake-Miyoo).port" "$STAGE/$G/tyrquake.opt.default"
+sed -i 's/\r$//' "$STAGE/$G/launch.sh" "$STAGE/$SC/Quake.port" "$STAGE/$G/tyrquake.opt.default"
 
 # Python's zipfile writes '/' separators (PowerShell 5's Compress-Archive writes '\')
 PY=
