@@ -58,6 +58,8 @@ if pgrep audioserver > /dev/null 2>&1; then
 	done
 fi
 { echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor; } 2>/dev/null
+[ -x /mnt/SDCARD/.tmp_update/bin/cpuclock ] && /mnt/SDCARD/.tmp_update/bin/cpuclock 1600 >/dev/null 2>&1
+{ echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor; } 2>/dev/null
 CPU1=/sys/devices/system/cpu/cpu1/online
 [ -f "$CPU1" ] && [ "$(cat "$CPU1" 2>/dev/null)" = 0 ] && { echo 1 > "$CPU1"; } 2>/dev/null
 

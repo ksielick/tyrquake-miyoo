@@ -765,6 +765,50 @@ void retro_reset(void)
    M_Game_StartNewGame();
 }
 
+/* L2+R2 combo centers view and suppresses individual trigger look up/down */
+static void
+IN_TriggerEvent(int id, qboolean new_state)
+{
+   static qboolean l2_down = false;
+   static qboolean r2_down = false;
+   static qboolean trigger_combo = false;
+
+   if (id == RETRO_DEVICE_ID_JOYPAD_L2)
+      l2_down = new_state;
+   else if (id == RETRO_DEVICE_ID_JOYPAD_R2)
+      r2_down = new_state;
+
+   if (l2_down && r2_down)
+   {
+      trigger_combo = true;
+      if (keydown[K_JOY_L2])
+         Key_Event(K_JOY_L2, 0);
+      if (keydown[K_JOY_R2])
+         Key_Event(K_JOY_R2, 0);
+      if (key_dest == key_game)
+      {
+         cl.viewangles[PITCH] = 0;
+         V_StopPitchDrift();
+      }
+   }
+   else if (!new_state)
+   {
+      if (trigger_combo)
+      {
+         if (!l2_down && !r2_down)
+            trigger_combo = false;
+      }
+      else
+      {
+         Key_Event(K_JOY_B + id, 0);
+      }
+   }
+   else if (!trigger_combo)
+   {
+      Key_Event(K_JOY_B + id, 1);
+   }
+}
+
 void Sys_SendKeyEvents(void)
 {
    int port;
@@ -804,10 +848,11 @@ void Sys_SendKeyEvents(void)
                for (i=RETRO_DEVICE_ID_JOYPAD_B; 
                      i <= RETRO_DEVICE_ID_JOYPAD_R3; ++i)
                {
-                  if (ret & (1 << i))
-                     Key_Event(K_JOY_B + i, 1);
+                  qboolean down = (ret & (1 << i)) != 0;
+                  if (port == 0 && (i == RETRO_DEVICE_ID_JOYPAD_L2 || i == RETRO_DEVICE_ID_JOYPAD_R2))
+                     IN_TriggerEvent(i, down);
                   else
-                     Key_Event(K_JOY_B + i, 0);
+                     Key_Event(K_JOY_B + i, down);
                }
             }
             break;

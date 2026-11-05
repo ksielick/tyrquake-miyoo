@@ -471,6 +471,10 @@ typedef struct {
    int vmin, vmax;	/* rows its vertices span */
 } d_polycall_t;
 
+#define POLY_MAX_ROWS 2048
+static int poly_v0 = POLY_MAX_ROWS, poly_v1 = 0, poly_total_weight = 0;
+static int poly_row_diff[POLY_MAX_ROWS + 1];
+
 static d_polycall_t *poly_calls;
 static int poly_numcalls, poly_maxcalls;
 static byte *poly_arena;
@@ -531,8 +535,16 @@ static qboolean D_PolysetRecord(int points, finalvert_t *fv, int nverts)
 
    if (points) {
       for (i = 0; i < nverts; i++) {
-         if (fv[i].v[1] < vmin) vmin = fv[i].v[1];
-         if (fv[i].v[1] > vmax) vmax = fv[i].v[1];
+         int y = fv[i].v[1];
+         if (y < vmin) vmin = y;
+         if (y > vmax) vmax = y;
+         if (y >= 0 && y < POLY_MAX_ROWS) {
+            if (y < poly_v0) poly_v0 = y;
+            if (y + 1 > poly_v1) poly_v1 = y + 1;
+            poly_row_diff[y] += 16;
+            poly_row_diff[y + 1] -= 16;
+            poly_total_weight += 16;
+         }
       }
    } else {
       /* the vertices the triangles use (the others of the array may
@@ -540,12 +552,30 @@ static qboolean D_PolysetRecord(int points, finalvert_t *fv, int nverts)
       fv = r_affinetridesc.pfinalverts;
       nverts = 0;
       for (i = 0; i < ntri; i++) {
+         int tvmin = 0x7fffffff, tvmax = -0x7fffffff;
+         int tumin = 0x7fffffff, tumax = -0x7fffffff;
          for (j = 0; j < 3; j++) {
             const finalvert_t *v = &fv[ptri[i].vertindex[j]];
             if (ptri[i].vertindex[j] >= nverts)
                nverts = ptri[i].vertindex[j] + 1;
             if (v->v[1] < vmin) vmin = v->v[1];
             if (v->v[1] > vmax) vmax = v->v[1];
+            if (v->v[1] < tvmin) tvmin = v->v[1];
+            if (v->v[1] > tvmax) tvmax = v->v[1];
+            if (v->v[0] < tumin) tumin = v->v[0];
+            if (v->v[0] > tumax) tumax = v->v[0];
+         }
+         int cvmin = tvmin < 0 ? 0 : tvmin;
+         int cvmax = tvmax > POLY_MAX_ROWS ? POLY_MAX_ROWS : tvmax;
+         if (cvmin < cvmax) {
+            int w = (tumax - tumin) + 16;
+            if (w > 0) {
+               if (cvmin < poly_v0) poly_v0 = cvmin;
+               if (cvmax > poly_v1) poly_v1 = cvmax;
+               poly_row_diff[cvmin] += w;
+               poly_row_diff[cvmax] -= w;
+               poly_total_weight += w * (cvmax - cvmin);
+            }
          }
       }
    }
@@ -596,16 +626,18 @@ static void poly_replay(int part, void *arg)
 {
    const int *rows = arg;	/* v0, mid, v1 */
    double t0 = poly_now_ms();
+   const int band_v0 = part ? rows[1] : rows[0];
+   const int band_v1 = part ? rows[2] : rows[1];
    int i;
 
-   d_band_v0 = part ? rows[1] : rows[0];
-   d_band_v1 = part ? rows[2] : rows[1];
+   d_band_v0 = band_v0;
+   d_band_v1 = band_v1;
    a_spans = part ? d_polyset_spans_worker : d_polyset_spans;
 
    for (i = 0; i < poly_numcalls; i++) {
       const d_polycall_t *c = &poly_calls[i];
 
-      if (c->vmax < d_band_v0 || c->vmin >= d_band_v1)
+      if (c->vmax < band_v0 || c->vmin >= band_v1)
          continue;
       d_tri = c->tri;
       d_tri.pfinalverts = (finalvert_t *)(poly_arena + c->verts);
@@ -634,6 +666,9 @@ void D_PolysetBeginRecord(void)
    poly_arena_used = 0;
    poly_vmin = 0x7fffffff;
    poly_vmax = -0x7fffffff;
+   poly_v0 = POLY_MAX_ROWS;
+   poly_v1 = 0;
+   poly_total_weight = 0;
 }
 
 void D_PolysetFlush(void)
@@ -648,23 +683,57 @@ void D_PolysetFlush(void)
    f = poly_split;
    if (f <= 0.0f)
       f = 0.5f;
-   rows[0] = poly_vmin;
-   rows[2] = poly_vmax + 1;
-   rows[1] = rows[0] + (int)((rows[2] - rows[0]) * f + 0.5f);
+
+   if (poly_v0 < poly_v1 && poly_total_weight > 0)
+   {
+      int v, cur_w = 0, acc = 0;
+      const int target = (int)(poly_total_weight * f);
+      int split_v = (poly_v0 + poly_v1) >> 1;
+
+      for (v = poly_v0; v < poly_v1; v++)
+      {
+         cur_w += poly_row_diff[v];
+         poly_row_diff[v] = 0;
+         acc += cur_w;
+         if (acc < target)
+         {
+            split_v = v + 1;
+         }
+      }
+      poly_row_diff[poly_v1] = 0;
+      rows[0] = poly_v0;
+      rows[1] = split_v;
+      rows[2] = poly_v1 + 1;
+   }
+   else
+   {
+      if (poly_v0 < poly_v1)
+      {
+         int v;
+         for (v = poly_v0; v <= poly_v1; v++)
+            poly_row_diff[v] = 0;
+      }
+      rows[0] = poly_vmin;
+      rows[2] = poly_vmax + 1;
+      rows[1] = rows[0] + (int)((rows[2] - rows[0]) * f + 0.5f);
+   }
+
    poly_ms[0] = poly_ms[1] = 0.0;
    if (!D_MT_RunBoth(poly_replay, rows)) {
       rows[1] = rows[2];
       poly_replay(0, rows);
-   } else if (poly_ms[0] > 0.05 && poly_ms[1] > 0.05) {
+   } else if (poly_ms[0] + poly_ms[1] > 0.1) {
       /* move the split towards equal drawing times */
-      cm = (float)(poly_ms[0] / f);
-      cw = (float)(poly_ms[1] / (1.0f - f));
+      const float ms0 = poly_ms[0] > 0.01 ? (float)poly_ms[0] : 0.01f;
+      const float ms1 = poly_ms[1] > 0.01 ? (float)poly_ms[1] : 0.01f;
+      cm = ms0 / f;
+      cw = ms1 / (1.0f - f);
       fi = cw / (cm + cw);
       f = 0.75f * f + 0.25f * fi;
-      if (f < 0.1f)
-         f = 0.1f;
-      else if (f > 0.9f)
-         f = 0.9f;
+      if (f < 0.25f)
+         f = 0.25f;
+      else if (f > 0.75f)
+         f = 0.75f;
       poly_split = f;
    }
    perf_timing_section_end(PERF_SECTION_SW_POLY);
@@ -673,6 +742,9 @@ void D_PolysetFlush(void)
    poly_arena_used = 0;
    poly_vmin = 0x7fffffff;
    poly_vmax = -0x7fffffff;
+   poly_v0 = POLY_MAX_ROWS;
+   poly_v1 = 0;
+   poly_total_weight = 0;
 }
 
 void D_PolysetEndRecord(void)

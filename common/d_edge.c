@@ -73,10 +73,12 @@ static void D_DrawSolidSurface(espan_t *spans, int color)
     * ((color << 24) is 0x80000000 which doesn't fit in int32_t). */
    unsigned int upix = (unsigned int)(color & 0xff);
    int pix = (int)((upix << 24) | (upix << 16) | (upix << 8) | upix);
+   const int band_v0 = d_band_v0;
+   const unsigned band_h = (unsigned)(d_band_v1 - band_v0);
 
    for (span = spans; span; span = span->pnext)
    {
-      if (D_SPAN_OUTSIDE_BAND(span))
+      if ((unsigned)(span->v - band_v0) >= band_h)
          continue;
       byte *pdest = (byte *)d_viewbuffer + screenwidth * span->v;
       int u = span->u;

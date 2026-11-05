@@ -288,6 +288,7 @@ typedef enum {
 
 extern keydest_t key_dest;
 extern const char *keybindings[K_LAST];
+extern qboolean keydown[K_LAST];
 extern int key_repeats[K_LAST];
 extern int key_lastpress;
 

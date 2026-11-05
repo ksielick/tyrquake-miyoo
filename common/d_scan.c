@@ -432,9 +432,12 @@ Turbulent8(espan_t *pspan)
    tdivz16stepu = d_tdivzstepu * 16;
    zi16stepu = d_zistepu * 16;
 
+   const int band_v0 = d_band_v0;
+   const unsigned band_h = (unsigned)(d_band_v1 - band_v0);
+
    do
    {
-      if (D_SPAN_OUTSIDE_BAND(pspan))
+      if ((unsigned)(pspan->v - band_v0) >= band_h)
          continue;
       /* calculate the initial s/z, t/z, 1/z, s, and t and clamp */
       int count = pspan->count;
@@ -642,9 +645,12 @@ void D_DrawSpans16Qb(espan_t *pspan) /* qb: up it from 8 to 16.  This + unroll =
    tdivzstepu = d_tdivzstepu * 16;
    zistepu = d_zistepu * 16;
 
+   const int band_v0 = d_band_v0;
+   const unsigned band_h = (unsigned)(d_band_v1 - band_v0);
+
    do
    {
-      if (D_SPAN_OUTSIDE_BAND(pspan))
+      if ((unsigned)(pspan->v - band_v0) >= band_h)
          continue;
       pdest = (byte *)((byte *)d_viewbuffer + (screenwidth * pspan->v) + pspan->u);
       count = pspan->count >> 4;
@@ -794,9 +800,12 @@ void D_DrawSpans16QbDither (espan_t *pspan) /* qbism up it from 8 to 16. This + 
    tdivzstepu = d_tdivzstepu * 16;
    zistepu    = d_zistepu * 16;
 
+   const int band_v0 = d_band_v0;
+   const unsigned band_h = (unsigned)(d_band_v1 - band_v0);
+
    do
    {
-      if (D_SPAN_OUTSIDE_BAND(pspan))
+      if ((unsigned)(pspan->v - band_v0) >= band_h)
          continue;
       fixed16_t t;
       int count = pspan->count;
@@ -1231,9 +1240,12 @@ D_DrawZSpans(espan_t *pspan)
    /* we count on FP exceptions being turned off to avoid range problems */
    int izistep = (int)(d_zistepu * 0x8000 * 0x10000);
 
+   const int band_v0 = d_band_v0;
+   const unsigned band_h = (unsigned)(d_band_v1 - band_v0);
+
    do
    {
-      if (D_SPAN_OUTSIDE_BAND(pspan))
+      if ((unsigned)(pspan->v - band_v0) >= band_h)
          continue;
       int16_t *pdest = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
       int count = pspan->count;

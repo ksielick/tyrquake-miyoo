@@ -78,10 +78,13 @@ void D_DrawSkyScans8 (espan_t *pspan)
    timespeed1=skytime*skyspeed;
    timespeed2=timespeed1*2.0;
 
+   const int band_v0 = d_band_v0;
+   const unsigned band_h = (unsigned)(d_band_v1 - band_v0);
+
    do
    {
       fixed16_t      snext, tnext, s2, t2;
-      if (D_SPAN_OUTSIDE_BAND(pspan))
+      if ((unsigned)(pspan->v - band_v0) >= band_h)
          continue;
       uint8_t *pdest = (uint8_t*)((byte *)d_viewbuffer +
             (screenwidth * pspan->v) + pspan->u);
