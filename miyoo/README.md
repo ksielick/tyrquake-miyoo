@@ -25,7 +25,7 @@ What it changes, compared with the stock core:
 - Software-renderer fixes taken from standalone TyrQuake 0.71: large maps no longer drop
   surfaces or edges, liquids with non-64x64 textures, and oversized faces.
 
-## Without RetroArch (test version)
+## Without RetroArch
 
 The same core can also run without RetroArch, through its own small program (`tqrun`, in
 `miyoo/standalone/`), as an ordinary Onion port: **Quake (TyrQuake-Miyoo)** in the Ports list's

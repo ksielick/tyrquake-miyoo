@@ -30,11 +30,26 @@ The stock core drops below 60 fps in all three demos; this one is well above it 
 
 - **In RetroArch** (`TyrQuake-Miyoo-<version>.zip`): its own core next to the stock TyrQuake
   core, with all of RetroArch's options.
-- **Without RetroArch** (`TyrQuake-Miyoo-Standalone-<version>.zip`, test version): about 20 %
+- **Without RetroArch** (`TyrQuake-Miyoo-Standalone-<version>.zip`): about 20 %
   faster. Every frame lands on the screen right on time, so movement is perfectly even. It's
   also the coolest and most frugal way to play: ~15 % of the battery an hour at 640x480 and
   60 fps. Settings (resolution, 30/60 fps, FPS counter) are in Quake's own menu, under
   Options → Video Options.
+
+## Buttons
+
+| Button | In Game | In Menu |
+|---|---|---|
+| **D-Pad** | move forward / back, turn left / right | navigate menu |
+| **B** | jump | cancel / back |
+| **A** | cycle weapon | confirm |
+| **Y** | attack / fire | |
+| **X** | freelook (hold) | |
+| **L1 / R1** | strafe left / right | previous / next |
+| **L2 / R2** | look up / down (**L2+R2: center view**) | |
+| **SELECT** | toggle run mode / walk | |
+| **START** | pause / options menu | close menu |
+| **MENU** | Onion Game Switcher (save & resume) | |
 
 ## Installing
 
