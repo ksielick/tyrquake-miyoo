@@ -8,7 +8,7 @@ GameExecutable="launch.sh"
 GameDataFile="tqrun"
 
 KillAudioserver=0
-PerformanceMode=1
+PerformanceMode=0
 
 Arguments=""
 

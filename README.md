@@ -18,13 +18,14 @@ console's CPU cores. The picture stays exactly as Quake drew it.
 How fast it runs at 640x480, compared with Onion's stock TyrQuake core (Quake's timedemos with
 no frame limit, average fps; the screen shows up to 60, so above that there's room to spare):
 
-| Timedemo | Stock TyrQuake | TyrQuake-Miyoo in RetroArch | TyrQuake-Miyoo without RetroArch |
-|---|---|---|---|
-| demo1 | 50 fps | 79 fps | 98 fps |
-| demo2 | 58 fps | 83 fps | 104 fps |
-| demo3 | 48 fps | 76 fps | 94 fps |
+| Timedemo | Stock TyrQuake | TyrQuake-Miyoo in RetroArch | TyrQuake-Miyoo without RetroArch | Optional 1600 MHz Overclock |
+|---|---|---|---|---|
+| demo1 | 50 fps | 75 fps | 91 fps | **86 fps** (RetroArch) / **111 fps** (Standalone) |
+| demo2 | 58 fps | 80 fps | 99 fps | **94 fps** (RetroArch) / **120 fps** (Standalone) |
+| demo3 | 48 fps | 73 fps | 89 fps | **83 fps** (RetroArch) / **108 fps** (Standalone) |
 
 The stock core drops below 60 fps in all three demos; this one is well above it on average.
+By default, **overclocking is disabled** — the console runs cool and battery-friendly at the stock 1200 MHz clock, holding 60 fps locked. For curiosity, an optional 1600 MHz overclock (commented out in the launch scripts) pushes performance past 110 fps.
 
 ## Two versions
 
